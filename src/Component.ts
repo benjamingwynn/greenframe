@@ -203,14 +203,14 @@ abstract class Component extends HTMLElement {
 		}
 
 		// Add the element CSS via a <link> element
-		const $link = new HTMLLinkElement()
+		const $link = document.createElement("link")
 		$link.setAttribute("element-css", "")
 		$link.rel = "stylesheet"
 		$link.href = Component.cachedComponentCSSBlobURLs[this.tagName] // get from cache
 		this.$root.appendChild($link)
 
 		if (Component.hideBeforeCSS) {
-			$link.onload = () => delete this.style.display
+			$link.onload = () => (this.style.display = "")
 		}
 
 		// Run the setup function
