@@ -1,27 +1,15 @@
 {
-	"name": "keeper",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"dependencies": {
-		"@types/css": "0.0.31",
-		"autoprefixer": "^9.5.0",
-		"css": "^2.2.4",
-		"indirect-htmlelement": "0.0.0",
-		"postcss": "^7.0.14",
-		"postcss-inline-comment": "^3.0.0",
-		"typescript": "2.9.2"
-	},
+	"name": "greenframe",
+	"version": "18.0.0",
+	"description": "a tiny framework for building evergreen web apps",
+	"main": "dist/index.js",
+	"dependencies": {},
 	"devDependencies": {
-		"@babel/core": "^7.3.4",
-		"babel-plugin-transform-custom-element-classes": "^0.1.0"
+		"typescript": "^3.0.0"
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"watch": "webpack-dev-server",
-		"dev": "webpack -w",
-		"ver": "tsc --version",
-		"build": "cd node_modules/memehub-common && tsc && cd ../.. && webpack"
+		"build": "tsc"
 	},
 	"keywords": [],
 	"author": "",
