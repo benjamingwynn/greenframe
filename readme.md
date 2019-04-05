@@ -37,12 +37,10 @@ Install and save greenframe to your application:
 Further documentation will be released soon, for now, here is a quick heavily commented sample application:
 
 ```
-import Application from "greenframe/Application"
-import Activity from "greenframe/Activity"
-import Component from "greenframe/Component"
+import {Activity, Application, Component} from "greenframe"
 
-/** Declare our app name and what window it's operating on. */
-const app = new Application("Hello greenframe", window)
+/** Declare our app with it's name. */
+const app = new Application("Hello greenframe")
 
 /** Declare a sample component, this inherits from HTMLElement and is declared in the CustomElements registry. */
 class SpinningBox extends Component {
@@ -90,7 +88,7 @@ class SpinningBox extends Component {
 /* An Activity is a state of an application, and will display depending on the current route of the UA. */
 class MainActivity extends Activity {
 	/** All activities must have titles defined on them. */
-	title = "Main Activity"
+	activityTitle = "Main Activity"
 
 	/** Activity extends from Component, so we can use  */
 	constructor() {

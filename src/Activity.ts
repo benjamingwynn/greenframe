@@ -15,7 +15,7 @@ abstract class Activity extends Component {
 	}
 
 	/** The title of this activity. */
-	abstract title: string
+	abstract activityTitle: string
 
 	/** Fires when the activity is switched to. Unlike `setup`, this is fired every time the component is switched to. `setup` is only fired when the component is loaded. */
 	abstract switchedTo(args: {[key: string]: string}): Promise<void> | void

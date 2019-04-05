@@ -4,15 +4,6 @@ import Component from "./Component"
 import Activity from "./Activity"
 import {toKebabCase} from "./util"
 
-// globals like `window` and `document` are undefined here, use `this.<global>` instead, inside of the Application instance.
-const window = undefined
-const document = undefined
-const setTimeout = undefined
-const setInterval = undefined
-const location = undefined
-const customElements = undefined
-const history = undefined
-
 /** The root of the application. This will attach to the body. */
 class ApplicationRoot extends Component {
 	constructor() {
@@ -88,7 +79,7 @@ export default class Application {
 	/** Time this was created. */
 	private constructTime: number
 
-	constructor(public readonly applicationName, public readonly window: Window, public readonly rootRoute = "") {
+	constructor(public readonly applicationName, public readonly rootRoute = "") {
 		this.constructTime = performance.now()
 
 		this.registerComponent(ApplicationRoot)
@@ -97,36 +88,30 @@ export default class Application {
 		this.$modalContainer = this.$root.$("#modal-container")
 
 		// Create title if none exists
-		if (!this.document.head.querySelector("title")) {
-			const $newTitle = this.document.createElement("title")
-			this.document.head.appendChild($newTitle)
+		if (!document.head.querySelector("title")) {
+			const $newTitle = document.createElement("title")
+			document.head.appendChild($newTitle)
 		}
 
 		// Setup the title of the window
-		this.$title = <HTMLTitleElement>this.document.head.querySelector("title")
+		this.$title = <HTMLTitleElement>document.head.querySelector("title")
 	}
-
-	public document = this.window.document
-	public setTimeout = this.window.setTimeout
-	public setInterval = this.window.setInterval
-	public location = this.window.location
-	public customElements = this.window.customElements
-	public history = this.window.history
 
 	/** Map of the registered activities via route name. Value is the string of the defined custom element. */
 	public registeredActivities: {[routeName: string]: string} = {}
 
 	/** Returns whether the application is in PWA "standalone" mode as as a boolean. */
 	public isAppInstalled(): boolean {
-		return this.window.matchMedia("(display-mode: standalone)").matches
+		return window.matchMedia("(display-mode: standalone)").matches
 	}
 
 	/** Handles the change of the current route. */
 	private async routeChanged(animate: boolean) {
 		const thisRoute = this.getCurrentActivityAsRoute()
+		console.log("Route changed:", thisRoute)
 
 		const switchTo = async (activity: Activity) => {
-			if (activity.title) {
+			if (activity.activityTitle) {
 				this.$title.innerText = this.buildTitle()
 			} else {
 				if (this.$title.innerText !== this.applicationName) {
@@ -134,11 +119,15 @@ export default class Application {
 				}
 			}
 
-			if (!activity.shadowRoot) throw new Error("Missing shadowRoot for routed activity.")
+			if (!activity.isActivity) {
+				console.error(activity)
+				throw new Error("switchTo() fired with an activity which isn't of type Activity. This is probably due to a fault in your activity, check the log for other errors.")
+			}
 
 			await activity.switchedTo(this.getPageArguments())
 		}
 
+		// Try to start the activity in the route
 		const keys = Object.keys(this.registeredActivities)
 		for (let i = 0; i < keys.length; i++) {
 			const targetRoute = keys[i]
@@ -151,7 +140,7 @@ export default class Application {
 			}
 		}
 
-		// Start default instead
+		// Start default instead, since no activity was found, but start it with the `target-not-found` attribute.
 		if (Application.DefaultActivityTag) {
 			const $target = this.startActivity(Application.DefaultActivityTag, true)
 			$target.setAttribute("target-not-found", "")
@@ -171,7 +160,7 @@ export default class Application {
 
 		return (
 			this.rootRoute +
-			this.location.pathname
+			location.pathname
 				.substr(1)
 				.split("/")
 				[this.rootRoute.split("/").length - 1].trim()
@@ -262,10 +251,9 @@ export default class Application {
 	}
 
 	/** Register a component to the Application. The component is automatically created based on it's class name. */
-	private registerComponent(component: Function, dieIfRegistered: boolean = false): void {
-		const elementName = "component-" + toKebabCase(component.name)
-		console.log(elementName, component.prototype)
-		if (this.customElements.get(elementName)) {
+	private registerComponent(component: Function, dieIfRegistered: boolean = false, forceName?: string): void {
+		const elementName = forceName || "component-" + toKebabCase(component.name)
+		if (customElements.get(elementName)) {
 			const message = elementName + " is already defined in the custom elements registry."
 			if (dieIfRegistered) {
 				throw new Error(message)
@@ -273,7 +261,7 @@ export default class Application {
 				console.warn(message)
 			}
 		} else {
-			this.customElements.define("component-" + elementName, component)
+			customElements.define(elementName, component)
 			console.log("Registered new component:", component.name, "→", elementName)
 		}
 	}
@@ -282,7 +270,7 @@ export default class Application {
 	public getPageArguments(): {[key: string]: string} {
 		// Based on https://stackoverflow.com/questions/6539761/window-location-search-query-as-json
 
-		return this.location.search
+		return location.search
 			.substring(1)
 			.split("&")
 			.reduce((result: {[key: string]: string}, value) => {
@@ -304,9 +292,9 @@ export default class Application {
 
 	/** Returns the current hash arguments of the page. Everything after the `?` part in the `#` part. */
 	private getHashArguments(): {[key: string]: string} {
-		if (this.location.hash.indexOf("?") === -1) return {}
-		return this.location.hash
-			.substring(this.location.hash.indexOf("?") + 1)
+		if (location.hash.indexOf("?") === -1) return {}
+		return location.hash
+			.substring(location.hash.indexOf("?") + 1)
 			.split("&")
 			.reduce((result, value) => {
 				const parts = value.split("=")
@@ -332,7 +320,7 @@ export default class Application {
 
 		// Activity.ShowFixedComponents()
 
-		const hash = this.location.hash.split("?")[0].substr(1)
+		const hash = location.hash.split("?")[0].substr(1)
 
 		if (hash) {
 			const functionObject = this.getCurrentActivity().registeredModalHooks[hash]
@@ -357,6 +345,8 @@ export default class Application {
 	public startActivity(activityTag: string, dontAnimate?: boolean): Activity {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
+		console.warn("Attempting to start activity with tag:", activityTag)
+
 		const $active = <Activity | null>this.$root.$_("" + activityTag + ":last-child:not([destroyed])")
 
 		if ($active) {
@@ -380,19 +370,19 @@ export default class Application {
 				}
 				return $loaded
 			} else {
-				const $newActivity = <Activity>this.document.createElement(activityTag)
+				console.log("The target activity does not exist, creating...")
+				const $newActivity = document.createElement(activityTag)
 
-				if (!dontAnimate) {
-					$newActivity.setAttribute("animate", "")
+				if ($newActivity instanceof Activity) {
+					if (!dontAnimate) {
+						$newActivity.setAttribute("animate", "")
+					}
+
+					this.$root.appendChild($newActivity)
+					return $newActivity
+				} else {
+					throw new Error("I tried to create a new activity, but `" + activityTag + "` doesn't appear to be an instance of Activity.")
 				}
-
-				// for (let componentIndex = 0; componentIndex < $newActivity.components.length; componentIndex++) {
-				// 	const componentRef = $newActivity.components[componentIndex]
-				// 	this.registerComponent(componentRef)
-				// }
-
-				this.$root.appendChild($newActivity)
-				return $newActivity
 			}
 		}
 	}
@@ -401,8 +391,8 @@ export default class Application {
 	public back() {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
-		if (this.history.state) {
-			this.history.back()
+		if (history.state) {
+			history.back()
 		} else {
 			// Switch to the default activity if we didn't get here via a previous activity
 			this.switchToMainActivity()
@@ -442,13 +432,13 @@ export default class Application {
 	}
 
 	/** Holds the last activity route name */
-	private lastRoute = this.location.pathname.substr(1)
+	private lastRoute = location.pathname.substr(1)
 
 	/** Switch the activity by the route name selected. */
 	public switchActivityViaRouteName(routeName: string, data?: {[key: string]: string}) {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
-		this.lastRoute = this.location.pathname.substr(1)
+		this.lastRoute = location.pathname.substr(1)
 
 		let extra = ""
 
@@ -459,18 +449,18 @@ export default class Application {
 			})
 		}
 
-		this.history.pushState({}, this.buildTitle(), "/" + this.rootRoute + routeName + extra)
+		history.pushState({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeName + extra)
 		this.routeChanged(true)
 	}
 
 	/** Builds a title string for use in activity switching */
 	private buildTitle(): string {
-		return `${this.getCurrentActivity().title} | ${this.applicationName}`
+		return `${this.getCurrentActivity().activityTitle} | ${this.applicationName}`
 	}
 
 	/** Registers the activity for use by the framework. */
 	private registerActivity(routeWithSlash: string, activity: Function): string {
-		if (!routeWithSlash.includes("/")) throw new Error("Missing / from route.")
+		if (routeWithSlash.indexOf("/") !== 0) throw new Error("Missing / from route.")
 		const route = routeWithSlash.substr(1)
 		let elementName = "activity-" + route
 		const fullRoute = this.rootRoute + route
@@ -487,14 +477,16 @@ export default class Application {
 			elementName = Application.DefaultActivityTag
 		}
 
+		// Register the component
+		this.registerComponent(activity, false, elementName)
+
 		// Define as an activity
-		this.customElements.define(elementName, activity)
 		this.registeredActivities[fullRoute] = elementName
 		return route
 	}
 
 	/** A readonly copy of `location.pathname` */
-	public readonly entryPoint: string = this.location.pathname
+	public readonly entryPoint: string = location.pathname
 
 	/** Default activity as a tag name */
 	public static DefaultActivityTag: string = "activity-default"
@@ -517,21 +509,21 @@ export default class Application {
 		}
 
 		// Connect to the body of this window
-		this.document.body.appendChild(this.$root)
+		document.body.appendChild(this.$root)
+
+		// Start the default activity
+		this.startActivity(Application.DefaultActivityTag, true)
 
 		// Register hooks
-		this.window.addEventListener("popstate", () => {
+		window.addEventListener("popstate", () => {
 			this.routeChanged(true)
 		})
 		this.routeChanged(false)
 
-		this.window.addEventListener("hashchange", () => {
+		window.addEventListener("hashchange", () => {
 			this.hashChanged()
 		})
 		this.hashChanged()
-
-		// Start the default activity
-		this.startActivity(Application.DefaultActivityTag, true)
 
 		const t = performance.now() - this.constructTime
 		console.info("Application `" + this.applicationName + "` started in", t, "ms")
