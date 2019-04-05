@@ -105,10 +105,16 @@ export default class Application {
 		return window.matchMedia("(display-mode: standalone)").matches
 	}
 
+	private lastRoute: string = ""
+
 	/** Handles the change of the current route. */
 	private async routeChanged(animate: boolean) {
 		const thisRoute = this.getCurrentActivityAsRoute()
-		console.log("Route changed:", thisRoute)
+		if (this.lastRoute === thisRoute) return
+
+		this.lastRoute = thisRoute
+
+		console.debug("Route changed:", thisRoute)
 
 		const switchTo = async (activity: Activity) => {
 			if (activity.activityTitle) {
@@ -302,8 +308,14 @@ export default class Application {
 			}, {})
 	}
 
+	private lastHash = ""
+
 	/** Handles the hash being changed. */
 	private hashChanged() {
+		const hash = location.hash.split("?")[0].substr(1)
+		if (hash === this.lastHash) return
+		this.lastHash = hash
+
 		// delete existing modals
 		Array.from(this.$modalContainer.children).forEach(($e) => {
 			$e.addEventListener("animationend", () => {
@@ -315,11 +327,9 @@ export default class Application {
 
 		// Activity.ShowFixedComponents()
 
-		const hash = location.hash.split("?")[0].substr(1)
-
 		if (hash) {
 			const functionObject = this.getCurrentActivity().registeredModalHooks[hash]
-			console.log("Hash changed:", hash, functionObject)
+			console.debug("Hash changed:", hash)
 
 			if (functionObject) {
 				if (typeof functionObject !== "function") throw new Error("Registered hash object is not a function.")
@@ -332,15 +342,13 @@ export default class Application {
 				// functionObject(Activity.ApplicationModalContainer, args)
 			}
 		} else {
-			console.log("Hash is empty.")
+			console.debug("Hash is empty.")
 		}
 	}
 
 	/** Starts an activity by the component tag passed. */
 	public startActivity(activityTag: string, dontAnimate?: boolean): Activity {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
-
-		console.warn("Attempting to start activity with tag:", activityTag)
 
 		const $active = <Activity | null>this.$root.$_("" + activityTag + ":last-child:not([destroyed])")
 
@@ -365,7 +373,6 @@ export default class Application {
 				}
 				return $loaded
 			} else {
-				console.log("The target activity does not exist, creating...")
 				const $newActivity = document.createElement(activityTag)
 
 				if ($newActivity instanceof Activity) {
@@ -415,16 +422,11 @@ export default class Application {
 		return $$activities
 	}
 
-	/** Holds the last activity route name */
-	private lastRoute = location.pathname.substr(1)
-
 	/** Switch the activity by the route name selected. */
 	public switchActivityViaRouteName(routeNameWithSlash: string, data?: {[key: string]: string}) {
 		let routeName: string = routeNameWithSlash[0] === "/" ? routeNameWithSlash.substr(1) : routeNameWithSlash
 
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
-
-		this.lastRoute = location.pathname.substr(1)
 
 		let extra = ""
 
@@ -503,12 +505,10 @@ export default class Application {
 		// Register hooks
 		window.addEventListener("popstate", () => {
 			this.routeChanged(true)
-		})
-		this.routeChanged(false)
-
-		window.addEventListener("hashchange", () => {
 			this.hashChanged()
 		})
+
+		this.routeChanged(false)
 		this.hashChanged()
 
 		const t = performance.now() - this.constructTime
