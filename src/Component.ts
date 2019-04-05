@@ -59,6 +59,14 @@ abstract class Component extends HTMLElement {
 	constructor(initialHTML: string = "", initialCSS: string = "", private isolate: boolean = true) {
 		super()
 
+		if (initialHTML.includes("</slot>")) {
+			console.warn(this.getClassName(), "This component contains a `slot` element. Slotted content is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
+		}
+
+		if (initialCSS.includes(":host>") || initialCSS.includes(":host >")) {
+			console.warn(this.getClassName(), "This component contains a `:host >` CSS selector. This is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
+		}
+
 		// Isolate determines if the CSS should attempt to isolate
 		if (this.isolate) {
 			this.$root = this.attachShadow({mode: "open"})
