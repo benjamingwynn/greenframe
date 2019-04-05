@@ -6,11 +6,15 @@ abstract class Activity extends Component {
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
 	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => HTMLElement} = {}
 
-	/** Registers a hash function. */
-	protected registerModal(trigger: HTMLElement, hash: string, callback: (properties: {[key: string]: string}) => HTMLElement) {
-		trigger.addEventListener("click", (ev) => {
-			ev.preventDefault()
-		})
+	/** Registers a hash function on this modal. */
+	protected registerModal(hash: string, callback: (properties: {[key: string]: string}) => HTMLElement, trigger?: HTMLElement) {
+		if (trigger) {
+			trigger.addEventListener("click", (ev) => {
+				ev.preventDefault()
+				location.hash = hash
+			})
+		}
+
 		this.registeredModalHooks[hash] = callback
 	}
 
