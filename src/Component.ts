@@ -1,13 +1,5 @@
 /** @format */
 
-import {isolateCSS} from "./isolateCSS"
-import * as autoprefixer from "autoprefixer"
-import * as postcss from "postcss"
-// import * as inlineComment from "postcss-inline-comment"
-
-/** Whether the current User Agent supports Shadow DOM. */
-const UA_SUPPORT_SHADOW_DOM = !!HTMLElement.prototype.attachShadow
-
 /**
  * A custom elements wrapper for easily creating reusable components.
  *
@@ -44,44 +36,20 @@ abstract class Component extends HTMLElement {
 		Component.commonCSSBlobURLs.push(URL.createObjectURL(newBlob))
 	}
 
-	/** Unique class names that have been used for `Component` */
-	private static usedUniqueClasses: string[] = []
-
 	/** Defines whether to use `display:"none"` on an element before its CSS has been parsed. */
 	private static hideBeforeCSS = true
 
 	/** Defines whether to force elements to use `style` tags for their CSS, or whether to use blobs. True to force blobs, false to force `style` tags. Leaving `undefined` forces neither option and will automatically decide whether it's appropriate. */
 	private static forceCSSMethod: boolean | undefined = undefined
 
-	/** Parse CSS. Adding unique references if required. */
-	private async parseCSS(css: string): Promise<string> {
-		const t = performance.now()
-		const post = await postcss([autoprefixer /*, inlineComment*/]).process(css, {from: undefined})
-		console.debug("PostCSS generated in:", performance.now() - t)
-		// console.log(post.messages)
-
-		// If we have a unique class, isolate the CSS.
-		if (this.isolate && UA_SUPPORT_SHADOW_DOM) {
-			return post.css
-		} else {
-			if (!this.uniqueClass) throw new Error("uniqueClass wasn't defined during construction.")
-			return isolateCSS(this.uniqueClass, post.css)
-		}
-	}
-
-	/** A unique class to identify this component. This is only used if ShadowDOM is not used. */
-	private _uniqueClass?: string
-	private get uniqueClass(): string {
-		if (!this._uniqueClass) {
-			// Generate a unique class
-			let uniq: string = ""
-			while (!uniq || Component.usedUniqueClasses.includes(uniq)) {
-				uniq = "component-" + Math.round(Math.random() * 10000000000).toString(16)
-			}
-			Component.usedUniqueClasses.push(uniq)
-			this._uniqueClass = uniq
-		}
-		return this._uniqueClass
+	/**
+	 * Does the following:
+	 * * Removes `//` comments from CSS.
+	 * * Auto-prefixes 2019 browser vendor prefixes (user-select, etc)
+	 */
+	private async parseCSS(inputCSS: string): Promise<string> {
+		// TODO: This should start a worker thread that parses the CSS
+		return inputCSS
 	}
 
 	/** Represents the root of the component where other Elements should be appended to and modified. Internally, this is either the component itself or a shadow root, depending on the components isolation setting. */
@@ -91,7 +59,8 @@ abstract class Component extends HTMLElement {
 	constructor(initialHTML: string = "", initialCSS: string = "", private isolate: boolean = true) {
 		super()
 
-		if (this.isolate && UA_SUPPORT_SHADOW_DOM) {
+		// Isolate determines if the CSS should attempt to isolate
+		if (this.isolate) {
 			this.$root = this.attachShadow({mode: "open"})
 		} else {
 			this.$root = this
@@ -112,7 +81,6 @@ abstract class Component extends HTMLElement {
 
 	/** Find a single element and return it. Errors if the element does not exist. To find an element that may exist, use `$_` */
 	public $(query: string, $root: HTMLElement | ShadowRoot = this.$root): HTMLElement {
-		// console.debug("$", query, $root)
 		if (!$root) throw new Error("Missing root for the query.")
 
 		const $e = $root.querySelector(query)
@@ -203,73 +171,50 @@ abstract class Component extends HTMLElement {
 			return
 		}
 
-		this.setAttribute("component", "")
-
+		// Only ever run this function once
 		this.connectedCallbackRan = true
 
-		if (UA_SUPPORT_SHADOW_DOM && this.isolate) {
+		// Set the [component] attribute on this element
+		this.setAttribute("component", "")
+
+		// Hide this element
+		if (Component.hideBeforeCSS) {
+			this.style.display = "none"
+		}
+
+		// If the CSS is isolated, add blob tags defining the CSS
+		if (this.isolate) {
+			// Add the common CSS
 			for (let i = 0; i < Component.commonCSSBlobURLs.length; i++) {
 				const $link = document.createElement("link")
-				// $link.style.display = "none !important"
 				$link.setAttribute("common-css", "")
 				$link.rel = "stylesheet"
 				$link.href = Component.commonCSSBlobURLs[i]
 				this.$root.appendChild($link)
 			}
-		} else {
-			this.classList.add(this.uniqueClass)
 		}
 
-		const addStyleTags = async () => {
-			const $css = document.createElement("style")
-			let css = Component.commonCSSConcatenated + "\n"
-			css += "/* Element CSS */\n" + this.componentCSS
-
-			const parsedCSS = await this.parseCSS(css)
-			$css.innerHTML = parsedCSS
-			this.$root.appendChild($css)
+		// If we don't have the blob CSS for this, create it
+		if (!Component.cachedComponentCSSBlobURLs[this.tagName]) {
+			const parsedCSS = await this.parseCSS(this.componentCSS)
+			const cssBlob = new Blob([parsedCSS], {type: "text/css"})
+			// and put it in cache
+			Component.cachedComponentCSSBlobURLs[this.tagName] = URL.createObjectURL(cssBlob)
 		}
 
-		const addBlobTags = async () => {
-			if (!Component.cachedComponentCSSBlobURLs[this.tagName]) {
-				// Put in cache
-				const parsedCSS = await this.parseCSS(this.componentCSS)
-				const cssBlob = new Blob([parsedCSS], {type: "text/css"})
-				Component.cachedComponentCSSBlobURLs[this.tagName] = URL.createObjectURL(cssBlob)
-			}
+		// Add the element CSS via a <link> element
+		const $link = new HTMLLinkElement()
+		$link.setAttribute("element-css", "")
+		$link.rel = "stylesheet"
+		$link.href = Component.cachedComponentCSSBlobURLs[this.tagName] // get from cache
+		this.$root.appendChild($link)
 
-			if (Component.hideBeforeCSS) {
-				this.style.display = "none"
-			}
-
-			const $link = document.createElement("link")
-			// $link.style.display = "none"
-			$link.setAttribute("element-css", "")
-			$link.rel = "stylesheet"
-			$link.href = Component.cachedComponentCSSBlobURLs[this.tagName]
-			this.$root.appendChild($link)
-
-			if (Component.hideBeforeCSS) {
-				$link.onload = () => (this.style.display = "")
-			}
+		if (Component.hideBeforeCSS) {
+			$link.onload = () => delete this.style.display
 		}
 
-		if (!this.isolate) {
-			// Non-isolated components should always use style tags
-			await addStyleTags()
-		} else if (Component.forceCSSMethod === true) {
-			await addStyleTags()
-		} else if (Component.forceCSSMethod === false) {
-			await addBlobTags()
-		} else {
-			if (!UA_SUPPORT_SHADOW_DOM) {
-				await addStyleTags()
-			} else {
-				await addBlobTags()
-			}
-		}
-
-		if (this.setup) this.setup()
+		// Run the setup function
+		this.setup()
 	}
 }
 
