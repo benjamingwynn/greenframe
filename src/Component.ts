@@ -53,34 +53,6 @@ abstract class Component extends HTMLElement {
 	/** Defines whether to force elements to use `style` tags for their CSS, or whether to use blobs. True to force blobs, false to force `style` tags. Leaving `undefined` forces neither option and will automatically decide whether it's appropriate. */
 	private static forceCSSMethod: boolean | undefined = undefined
 
-	/** Register a component. The component is automatically created based on it's class name */
-	static registerComponent(component: Function, forceName?: string): void {
-		if (forceName) {
-			customElements.define("component-" + forceName, component)
-		} else {
-			function toKebabCase(input: string): string {
-				let output: string = ""
-				input.split("").forEach((char, index) => {
-					if (char.toUpperCase() === char) {
-						// this is an upper case character
-						if (index !== 0) {
-							output += "-"
-						}
-
-						output += char.toLowerCase()
-					} else {
-						output += char
-					}
-				})
-				return output
-			}
-
-			const elementName = "component-" + toKebabCase(component.name)
-			customElements.define(elementName, component)
-			console.log("Registered new component:", component.name, "→", elementName)
-		}
-	}
-
 	/** Parse CSS. Adding unique references if required. */
 	private async parseCSS(css: string): Promise<string> {
 		const t = performance.now()
