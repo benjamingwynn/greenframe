@@ -20,7 +20,7 @@ export default abstract class FrameComponent extends Component {
 			}
 		}
 
-		throw new Error("Cannot destory frame call as it doesn't exist.")
+		throw new Error("Cannot destroy frame call as it doesn't exist.")
 	}
 
 	async connectedCallback() {
