@@ -30,7 +30,7 @@ abstract class Component extends HTMLElement {
 	private static cachedComponentCSSBlobURLs: {[tagName: string]: string} = {}
 
 	/** Setup for the component, such as adding events, etc. This should be here, and not in the constructor. */
-	public abstract setup(): void
+	abstract setup(): void
 
 	/**
 	 * Add common CSS. This is added to all components constructed after this function is fired.
