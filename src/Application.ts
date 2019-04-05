@@ -140,14 +140,8 @@ export default class Application {
 			}
 		}
 
-		// Start default instead, since no activity was found, but start it with the `target-not-found` attribute.
-		if (Application.DefaultActivityTag) {
-			const $target = this.startActivity(Application.DefaultActivityTag, true)
-			$target.setAttribute("target-not-found", "")
-			await switchTo($target)
-		} else {
-			throw new Error("No default route provided, and an invalid route was passed.")
-		}
+		// TODO: Define a handler for 404's
+		throw new Error("No activity exists at this route, and there is no handler for 404's.")
 	}
 
 	/** Sets a  */
@@ -159,6 +153,7 @@ export default class Application {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
 		return (
+			"/" +
 			this.rootRoute +
 			location.pathname
 				.substr(1)
@@ -381,7 +376,7 @@ export default class Application {
 					this.$root.appendChild($newActivity)
 					return $newActivity
 				} else {
-					throw new Error("I tried to create a new activity, but `" + activityTag + "` doesn't appear to be an instance of Activity.")
+					throw new Error("I tried to create a new activity, but `" + activityTag + "` doesn't appear to be an instance of Activity. This is probably a problem with one of your other components failing to register properly. See the log for more information.")
 				}
 			}
 		}
@@ -420,22 +415,13 @@ export default class Application {
 		return $$activities
 	}
 
-	/** Get the default registered activity. */
-	public getDefaultActivity(): Activity {
-		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
-
-		if (Application.DefaultActivityTag) {
-			return <Activity>this.$root.querySelector(Application.DefaultActivityTag)
-		} else {
-			throw new Error("No default activity provided")
-		}
-	}
-
 	/** Holds the last activity route name */
 	private lastRoute = location.pathname.substr(1)
 
 	/** Switch the activity by the route name selected. */
-	public switchActivityViaRouteName(routeName: string, data?: {[key: string]: string}) {
+	public switchActivityViaRouteName(routeNameWithSlash: string, data?: {[key: string]: string}) {
+		let routeName: string = routeNameWithSlash[0] === "/" ? routeNameWithSlash.substr(1) : routeNameWithSlash
+
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
 		this.lastRoute = location.pathname.substr(1)
@@ -459,23 +445,29 @@ export default class Application {
 	}
 
 	/** Registers the activity for use by the framework. */
-	private registerActivity(routeWithSlash: string, activity: Function): string {
-		if (routeWithSlash.indexOf("/") !== 0) throw new Error("Missing / from route.")
-		const route = routeWithSlash.substr(1)
-		let elementName = "activity-" + route
+	private registerActivity(route: string, activity: Function): string {
+		if (route[0] !== "/") throw new Error("Missing / from route.")
+
 		const fullRoute = this.rootRoute + route
 
 		if (!activity.prototype.switchedTo) {
 			throw new Error("Cannot register this activity as it's not a valid activity class. Ensure it inherits from the `Activity` class, and that it contains the required `switchedTo` method.")
 		}
 
-		if (route) {
-			if (this.registeredActivities[fullRoute]) {
-				throw new Error("Route `" + route + "` already registered.")
-			}
-		} else {
-			elementName = Application.DefaultActivityTag
+		if (this.registeredActivities[fullRoute]) {
+			throw new Error("Route `" + route + "` already registered.")
 		}
+
+		const elementName =
+			"activity" +
+			route
+				.split("")
+				.map((char, i, all) => {
+					return char === "/" ? "-slash" + (i === all.length - 1 ? "" : "-") : char
+				})
+				.join("")
+
+		// const elementName = "activity" + route.split("/").join("-slash")
 
 		// Register the component
 		this.registerComponent(activity, false, elementName)
@@ -487,9 +479,6 @@ export default class Application {
 
 	/** A readonly copy of `location.pathname` */
 	public readonly entryPoint: string = location.pathname
-
-	/** Default activity as a tag name */
-	public static DefaultActivityTag: string = "activity-default"
 
 	/** Whether the application has been started with `.start()` */
 	private started: boolean = false
@@ -510,9 +499,6 @@ export default class Application {
 
 		// Connect to the body of this window
 		document.body.appendChild(this.$root)
-
-		// Start the default activity
-		this.startActivity(Application.DefaultActivityTag, true)
 
 		// Register hooks
 		window.addEventListener("popstate", () => {
