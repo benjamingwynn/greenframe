@@ -39,6 +39,7 @@ abstract class Activity extends Component {
 				height: calc(100% - var(--activity-top) - var(--activity-bottom));
 				width: calc(100% - var(--activity-left) - var(--activity-right));
 				color: black;
+				background: white;
 			}
 
 			:host([animate]) {
