@@ -22,7 +22,7 @@ class ApplicationRoot extends Component {
 			`,
 			`
 				/* Default activity variables */
-				:host {
+				component-application-root {
 					--activity-top: 0px;
 					--activity-left: 0px;
 					--activity-bottom: 0px;
