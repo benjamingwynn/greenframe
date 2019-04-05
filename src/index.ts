@@ -8,12 +8,4 @@ import FrameComponent from "./FrameComponent"
 import * as DOMUtil from "./DOMUtil"
 import * as util from "./util"
 
-export default {
-	Application,
-	Activity,
-	Component,
-	ReactiveComponent,
-	FrameComponent,
-	DOMUtil,
-	util,
-}
+export {Application, Activity, Component, ReactiveComponent, FrameComponent, DOMUtil, util}
