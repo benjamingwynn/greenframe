@@ -3,7 +3,7 @@
 		"target": "esnext",
 		"declaration": true,
 		"sourceMap": true,
-		"outDir": "./dist",
+		"outDir": ".",
 		"rootDir": "./src",
 		"removeComments": true,
 		"strict": true,

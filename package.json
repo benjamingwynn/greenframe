@@ -2,7 +2,7 @@
 	"name": "greenframe",
 	"version": "18.0.0",
 	"description": "a tiny framework for building evergreen web apps",
-	"main": "dist/index.js",
+	"main": "index.js",
 	"dependencies": {},
 	"devDependencies": {
 		"typescript": "^3.0.0"
