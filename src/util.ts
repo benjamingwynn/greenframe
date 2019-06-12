@@ -26,20 +26,26 @@ export function sleepFrames(nFrames: number) {
 	})
 }
 
-/** Converts an input to kebab-case */
+/** Converts a ToggleCase or camelCase string to kebab-case */
 export function toKebabCase(input: string): string {
-	let output: string = ""
-	input.split("").forEach((char, index) => {
-		if (char.toUpperCase() === char) {
-			// this is an upper case character
-			if (index !== 0) {
-				output += "-"
-			}
+	const letters = input.split("")
+	let numberOfUppersInOrder = 0
+	for (let index = letters.length - 2; index >= 1; index--) {
+		const letter = letters[index]
 
-			output += char.toLowerCase()
+		if (letter.toLowerCase() === letter) {
+			// this letter is a lowercase letter
+			numberOfUppersInOrder = 0
 		} else {
-			output += char
+			// this letter is an uppercase letter
+			numberOfUppersInOrder++
+
+			// if this is the first uppercase letter, add dash
+			if (numberOfUppersInOrder === 1) {
+				letters.splice(index, 0, "-")
+			}
 		}
-	})
-	return output
+	}
+	const out = letters.join("").toLowerCase()
+	return out
 }
