@@ -4,6 +4,18 @@ import Component from "./Component"
 import Activity from "./Activity"
 import {toKebabCase} from "./util"
 
+/** The colour scheme for the component. This is a simple way to set CSS variables for different schemes. Greenframe will automatically decide what's best for the user. */
+type ColorSchemaName = "dark" | "light" | "highContrast"
+
+type ColorSchema = {
+	text: string
+	applicationBackground: string
+	[customProperty: string]: string
+}
+
+/** An exception that is thrown when a color scheme the app tries to switch to does not exist. */
+class ColorSchemaDoesNotExistError extends Error {}
+
 /** The root of the application. This will attach to the body. */
 class ApplicationRoot extends Component {
 	constructor() {
@@ -29,7 +41,7 @@ class ApplicationRoot extends Component {
 					right: 0;
 					bottom: 0;
 
-					background: white;
+					background: var(--schema-application-background);
 				}
 
 				#modal-container {
@@ -78,6 +90,55 @@ export default class Application {
 
 	/** Time this was created. */
 	private constructTime: number
+
+	/** The current colour scheme of the application. */
+	private currentColorScheme: ColorSchemaName = Application.GetDefaultColorScheme()
+
+	private registeredColorSchemas: {[key in ColorSchemaName]?: HTMLStyleElement} = {}
+
+	private static GetDefaultColorScheme(): ColorSchemaName {
+		const useScheme = localStorage.getItem("greenframe-use-scheme")
+		if (useScheme === "light" || useScheme === "dark" || useScheme === "highContrast") {
+			return useScheme
+		} else {
+			return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+		}
+	}
+
+	public registerColorScheme(name: ColorSchemaName, schema: ColorSchema) {
+		const $style = document.createElement("style")
+		$style.setAttribute("color-schema", "")
+		$style.innerHTML = "component-application-root {"
+		for (let item in schema) {
+			$style.innerHTML += "--schema-" + toKebabCase(item) + ": " + schema[item] + ";" + "\n"
+		}
+		$style.innerHTML += "}"
+		console.log("Created schema", $style)
+		this.registeredColorSchemas[name] = $style
+	}
+
+	/**
+	 * Sets up a new color schema to use for the application.
+	 *
+	 * @throws ColorSchemaDoesNotExistError
+	 **/
+	public setColorSchema(newSchema: ColorSchemaName, remember?: boolean) {
+		// Check the colour scheme exists
+		const $schema = this.registeredColorSchemas[newSchema]
+		if (!$schema) {
+			throw new ColorSchemaDoesNotExistError()
+		}
+
+		// Target the old stylesheets
+		this.$root.$$("style[color-schema]").forEach(($s) => $s.remove())
+
+		// Add the stylesheet
+		this.$root.$root.appendChild($schema)
+
+		if (remember) {
+			localStorage.setItem("greenframe-use-scheme", newSchema)
+		}
+	}
 
 	constructor(public readonly applicationName, public readonly rootRoute = "") {
 		this.constructTime = performance.now()
@@ -488,6 +549,15 @@ export default class Application {
 	/** Starts the application */
 	public start(args: {activityDefinitions: {[route: string]: Function}; componentDefinitions: Function[]}) {
 		this.started = true
+
+		// Attempt to register the colour schema
+		try {
+			this.setColorSchema(this.currentColorScheme)
+		} catch (ex) {
+			if (ex instanceof ColorSchemaDoesNotExistError) {
+				console.warn("🌳🏗 ⚠️ You haven't specified any color schemes. Consider doing so for dark mode support with `app.registerColorScheme()`")
+			}
+		}
 
 		for (let i = 0; i < args.componentDefinitions.length; i++) {
 			const component = args.componentDefinitions[i]

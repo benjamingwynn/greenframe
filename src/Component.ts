@@ -235,6 +235,7 @@ Component.addCommonCSS(`
 		cursor: default;
 		user-select: none;
 		box-sizing: border-box;
+		color: var(--schema-text);
 	}
 
 	h1, h2, h3, h4, h5, h6, button, p, div, main, aside, section, span, img {
