@@ -100,8 +100,8 @@ export default abstract class ReactiveComponent extends FrameComponent {
 		return "--" + this.buildAttributeNameFromProp(prop)
 	}
 
-	constructor(initialHTML: string, initalCSS: string, isolate?: boolean) {
-		super(initialHTML, initalCSS, isolate)
+	constructor(initialHTML: string, initialCSS: string, isolate?: boolean) {
+		super(initialHTML, initialCSS, isolate)
 		const keysReact = Object.keys(this)
 
 		/** HACK: Wait for frame so we get all the properites of a sub-class post-construction. */
