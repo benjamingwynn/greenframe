@@ -1,5 +1,12 @@
 /** @format */
 
+window.addEventListener("unhandledrejection", (ex) => {
+	if (ex.reason && ex.reason.message === "Illegal constructor") {
+		console.warn("🌳🏗 It looks like you might be trying to construct a component using `new ()` without registering it first, make sure your `app.start()` includes all the definitions you're trying to use in your app.")
+		// console.log(ex)
+	}
+})
+
 /**
  * A custom elements wrapper for easily creating reusable components.
  *
