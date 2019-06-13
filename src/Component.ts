@@ -18,7 +18,6 @@ abstract class Component extends HTMLElement {
 	private readonly componentCSS: string
 
 	private static commonCSSBlobURLs: string[] = []
-	private static commonCSSConcatenated: string = ""
 	private static cachedComponentCSSBlobURLs: {[tagName: string]: string} = {}
 
 	/** Setup for the component, such as adding events, etc. This should be here, and not in the constructor. */
@@ -30,8 +29,6 @@ abstract class Component extends HTMLElement {
 	 * **This is not an excuse for poor practice** - e.g. this should not be used to add a global `.row` as this will impact performance and confusion. Instead, consider defining a `row` component.
 	 **/
 	public static addCommonCSS(css: string) {
-		Component.commonCSSConcatenated += css
-
 		const newBlob = new Blob([css], {type: "text/css"})
 		Component.commonCSSBlobURLs.push(URL.createObjectURL(newBlob))
 	}
