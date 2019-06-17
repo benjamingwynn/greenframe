@@ -1,79 +1,98 @@
 /** @format */
 
-import Component from "./Component"
+import ComponentCore from "./ComponentCore"
 import Activity from "./Activity"
 import {toKebabCase} from "./util"
+import {ModalComponent} from "./index"
 
 /** The colour scheme for the component. This is a simple way to set CSS variables for different schemes. Greenframe will automatically decide what's best for the user. */
-type ColorSchemaName = "dark" | "light" | "highContrast"
+export type ColorSchemaName = "dark" | "light" | "highContrast"
 
-type ColorSchema = {
-	text: string
-	applicationBackground: string
-	[customProperty: string]: string
+export type ColorSchema = {
+	text?: string
+	applicationBackground?: string
+	buttonBackground?: string
+	buttonForeground?: string
+	titleBarBackground?: string
+	titleBarForeground?: string
+	active?: string
+	focus?: string
+	danger?: string
+	iconFill?: string
+	toggleBackground?: string
+	toggleDotOff?: string
+	toggleDotOn?: string
+	toggleDotLoader?: string
+	loader?: string
+	titleBarIcon?: string
+	formBackground?: string
+	inputBackground?: string
+	inputBorderBlur?: string
+	formNext?: string
+	//[customProperty: string]: string
 }
 
 /** An exception that is thrown when a color scheme the app tries to switch to does not exist. */
 class ColorSchemaDoesNotExistError extends Error {}
 
 /** The root of the application. This will attach to the body. */
-class ApplicationRoot extends Component {
+class ApplicationRoot extends ComponentCore {
 	constructor() {
-		super(
-			`
-				<div id="modal-container"></div>
-			`,
-			`
-				/* Default activity variables */
-				component-application-root {
-					--activity-top: 0px;
-					--activity-left: 0px;
-					--activity-bottom: 0px;
-					--activity-right: 0px;
-					--animation-time: 0.3s;
-
-					animation: fadeIn 0.15s;
-					animation-fill-mode: both;
-
-					position: fixed;
-					top: 0;
-					left: 0;
-					right: 0;
-					bottom: 0;
-
-					background: var(--schema-application-background);
-				}
-
-				#modal-container {
-					z-index: 2;
-					position: fixed;
-					overflow: visible;
-				}
-
-				@keyframes fadeIn {
-					from {
-						opacity:0;
-						visibility: hidden;
-					}
-					to {
-						opacity:1;
-						visibility: visible;
-					}
-				}
-
-				.fixed-component {
-					transition: all 0.3s;
-				}
-			`,
-			// Do not isolate the root, this will allow us to use external scripts that require direct access to the document root, such as SSO.
-			false
-		)
+		// Do not isolate the root, this will allow us to use external scripts that require direct access to the document root, such as SSO.
+		super(false)
 	}
 
 	public setup(): void {
-		// We don't need to do any setup here.
+		this.html(`<div id="modal-container"></div>`)
+		this.css(`
+			/* Default activity variables */
+			:host {
+				--activity-top: 0px;
+				--activity-left: 0px;
+				--activity-bottom: 0px;
+				--activity-right: 0px;
+				--animation-time: 0.3s;
+
+				animation: fadeIn 0.15s;
+				animation-fill-mode: both;
+
+				position: fixed;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+			}
+
+			#modal-container {
+				z-index: 2;
+				position: fixed;
+				overflow: visible;
+			}
+
+			@keyframes fadeIn {
+				from {
+					opacity:0;
+					visibility: hidden;
+				}
+				to {
+					opacity:1;
+					visibility: visible;
+				}
+			}
+
+			.fixed-component {
+				transition: all 0.3s;
+			}
+		`)
 	}
 }
+
+// if the user hits escape, close modals
+window.addEventListener("keyup", (ev) => {
+	if (ev.key === "Escape") {
+		location.hash = ""
+	}
+})
 
 /**
  * Application.ts holds application related functions. It splits the Activity namespace up, so that the activity is free to do only activity things. Only one application may exist per window.
@@ -83,7 +102,9 @@ export default class Application {
 	public $root: ApplicationRoot
 
 	/** Reference to the modal container. */
-	public $modalContainer: HTMLElement
+	public get $modalContainer(): HTMLElement {
+		return this.$root.$("#modal-container")
+	}
 
 	/** Reference to the current title element. */
 	public $title: HTMLTitleElement
@@ -91,11 +112,28 @@ export default class Application {
 	/** Time this was created. */
 	private constructTime: number
 
-	/** The current colour scheme of the application. */
+	/** The current color scheme of the application. */
 	private currentColorScheme: ColorSchemaName = Application.GetDefaultColorScheme()
 
-	private registeredColorSchemas: {[key in ColorSchemaName]?: HTMLStyleElement} = {}
+	/** Registered color schemes as stylesheet elements. */
+	private registeredColorSchemaStylesheets: {[key in ColorSchemaName]?: HTMLStyleElement} = {}
 
+	private registeredColorSchemas: {[key in ColorSchemaName]?: ColorSchema} = {}
+
+	/** Container for icons. */
+	public icons: {[iconName: string]: () => SVGElement} = {}
+
+	/** Returns the CSS variable for the current ColorSchema if we currently have a variable declared, if we don't then this function returns a default. */
+	public getSchemaProperty(prop: keyof ColorSchema): string {
+		const cs = this.registeredColorSchemas[this.currentColorScheme]
+		if (cs && cs[prop]) {
+			return "var(--schema-" + toKebabCase(prop) + ")"
+		} else {
+			return `hotpink /* add ${prop} to your ${this.currentColorScheme} ColorSchema to override this */`
+		}
+	}
+
+	/** Returns the default color scheme according to the User Agent. */
 	private static GetDefaultColorScheme(): ColorSchemaName {
 		const useScheme = localStorage.getItem("greenframe-use-scheme")
 		if (useScheme === "light" || useScheme === "dark" || useScheme === "highContrast") {
@@ -106,6 +144,7 @@ export default class Application {
 	}
 
 	public registerColorScheme(name: ColorSchemaName, schema: ColorSchema) {
+		this.registeredColorSchemas[name] = schema
 		const $style = document.createElement("style")
 		$style.setAttribute("color-schema", "")
 		$style.innerHTML = "component-application-root {"
@@ -114,7 +153,7 @@ export default class Application {
 		}
 		$style.innerHTML += "}"
 		console.log("Created schema", $style)
-		this.registeredColorSchemas[name] = $style
+		this.registeredColorSchemaStylesheets[name] = $style
 	}
 
 	/**
@@ -124,7 +163,7 @@ export default class Application {
 	 **/
 	public setColorSchema(newSchema: ColorSchemaName, remember?: boolean) {
 		// Check the colour scheme exists
-		const $schema = this.registeredColorSchemas[newSchema]
+		const $schema = this.registeredColorSchemaStylesheets[newSchema]
 		if (!$schema) {
 			throw new ColorSchemaDoesNotExistError()
 		}
@@ -140,13 +179,24 @@ export default class Application {
 		}
 	}
 
-	constructor(public readonly applicationName, public readonly rootRoute = "") {
+	public currentAppState: string = this.defaultState
+
+	/** Switches the app state. This will remove all fixed components and re-fire the app setup. */
+	public switchAppState(newState: string) {
+		this.unregisterFixedComponents()
+		this.currentAppState = newState
+		// because we've switched the app state we should also re-fire the current activities switchedTo prop
+		this.getCurrentActivity().switchedTo(this.getPageArguments())
+		if (this.appSetup) this.appSetup(newState)
+	}
+
+	private readonly rootRoute = ""
+
+	constructor(public readonly applicationName, private defaultState = "default", private appSetup?: (state: string) => void) {
 		this.constructTime = performance.now()
 
 		this.registerComponent(ApplicationRoot)
 		this.$root = new ApplicationRoot()
-		// Create ref to the modal container
-		this.$modalContainer = this.$root.$("#modal-container")
 
 		// Create title if none exists
 		if (!document.head.querySelector("title")) {
@@ -168,6 +218,11 @@ export default class Application {
 
 	private lastRoute: string = ""
 
+	/** Returns whether the specified activity is currently active */
+	public isActivityActive(test: Activity) {
+		return test.tagName.toLowerCase() === this.registeredActivities[this.getCurrentActivityAsRoute()]
+	}
+
 	/** Handles the change of the current route. */
 	private async routeChanged(animate: boolean) {
 		const thisRoute = this.getCurrentActivityAsRoute()
@@ -178,6 +233,16 @@ export default class Application {
 		console.debug("Route changed:", thisRoute)
 
 		const switchTo = async (activity: Activity) => {
+			if (typeof activity.fullScreen === "boolean") {
+				if (activity.fullScreen === true) {
+					this.hideFixedComponents()
+				} else {
+					this.showFixedComponents()
+				}
+			}
+
+			activity.switchedTo(this.getPageArguments())
+
 			if (activity.activityTitle) {
 				this.$title.innerText = this.buildTitle()
 			} else {
@@ -190,8 +255,6 @@ export default class Application {
 				console.error(activity)
 				throw new Error("switchTo() fired with an activity which isn't of type Activity. This is probably due to a fault in your activity, check the log for other errors.")
 			}
-
-			await activity.switchedTo(this.getPageArguments())
 		}
 
 		// Try to start the activity in the route
@@ -211,11 +274,12 @@ export default class Application {
 		throw new Error("No activity exists at this route, and there is no handler for 404's.")
 	}
 
-	/** Sets a  */
+	/** Sets a CSS variable on the root of the Application */
 	public declareStyleProp(propertyName: string, value: string): void {
 		this.$root.style.setProperty(propertyName, value)
 	}
 
+	/** Returns the current activity as the route it's registered under. */
 	public getCurrentActivityAsRoute(): string {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
@@ -238,31 +302,33 @@ export default class Application {
 
 		this.updateFixedComponentPositions = false
 
-		this.$root.style.setProperty("--activity-top", "0px")
-		this.$root.style.setProperty("--activity-left", "0px")
-		this.$root.style.setProperty("--activity-right", "0px")
-		this.$root.style.setProperty("--activity-bottom", "0px")
+		requestAnimationFrame(() => {
+			this.$root.style.setProperty("--activity-top", "0px")
+			this.$root.style.setProperty("--activity-left", "0px")
+			this.$root.style.setProperty("--activity-right", "0px")
+			this.$root.style.setProperty("--activity-bottom", "0px")
 
-		this.fixedComponents.forEach(($comp) => {
-			if ($comp.style.bottom === "0px") {
-				$comp.style.transform = "translateY(100%)"
-			}
+			this.fixedComponents.forEach(($comp) => {
+				if ($comp.style.bottom === "0px") {
+					$comp.style.transform = "translateY(100%)"
+				}
 
-			if ($comp.style.top === "0px") {
-				$comp.style.transform = "translateY(-100%)"
-			}
+				if ($comp.style.top === "0px") {
+					$comp.style.transform = "translateY(-100%)"
+				}
 
-			if ($comp.style.top === "0px") {
-				$comp.style.transform = "translateY(-100%)"
-			}
+				if ($comp.style.top === "0px") {
+					$comp.style.transform = "translateY(-100%)"
+				}
 
-			if ($comp.style.left === "0px") {
-				$comp.style.transform = "translateX(-100%)"
-			}
+				if ($comp.style.left === "0px") {
+					$comp.style.transform = "translateX(-100%)"
+				}
 
-			if ($comp.style.right === "0px") {
-				$comp.style.transform = "translateX(100%)"
-			}
+				if ($comp.style.right === "0px") {
+					$comp.style.transform = "translateX(100%)"
+				}
+			})
 		})
 	}
 
@@ -299,6 +365,36 @@ export default class Application {
 		requestAnimationFrame(keepPositionValid)
 	}
 
+	/** Unregister all fixed components. */
+	public unregisterFixedComponents() {
+		for (let i = 0; i < this.fixedComponents.length; i++) {
+			this.fixedComponents[i].remove() // disconnect
+			this.fixedComponents.splice(i, 1) // remove from array
+		}
+	}
+
+	/** Unregister a fixed component either via a selector string or via the element reference. */
+	public unregisterFixedComponent(element: string | HTMLElement, failSilently: boolean = false) {
+		for (let i = 0; i < this.fixedComponents.length; i++) {
+			let matched: boolean
+			if (typeof element === "string") {
+				matched = this.fixedComponents[i].matches(element)
+			} else {
+				matched = this.fixedComponents[i] === element
+			}
+
+			if (matched) {
+				this.fixedComponents[i].remove() // disconnect
+				this.fixedComponents.splice(i, 1) // remove from array
+				break
+			}
+		}
+
+		if (!failSilently) {
+			throw new Error("Could not find element to unregister: " + element)
+		}
+	}
+
 	/** Whether to update fixed components positions or not using RAF. */
 	private updateFixedComponentPositions = true
 
@@ -307,8 +403,10 @@ export default class Application {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
 		this.updateFixedComponentPositions = true
-		this.fixedComponents.forEach(($comp) => {
-			$comp.style.transform = ""
+		requestAnimationFrame(() => {
+			this.fixedComponents.forEach(($comp) => {
+				$comp.style.transform = ""
+			})
 		})
 	}
 
@@ -369,6 +467,7 @@ export default class Application {
 			}, {})
 	}
 
+	/** The last URL hash value the was read by the browser. */
 	private lastHash = ""
 
 	/** Handles the hash being changed. */
@@ -399,12 +498,18 @@ export default class Application {
 
 				const args = this.getHashArguments()
 				const $modal = functionObject(args)
+				$modal.type = "hash"
 				this.$modalContainer.appendChild($modal)
 				// functionObject(Activity.ApplicationModalContainer, args)
 			}
 		} else {
 			console.debug("Hash is empty.")
 		}
+	}
+
+	public attachModal(modal: ModalComponent) {
+		modal.type = "attached"
+		this.$modalContainer.appendChild(modal)
 	}
 
 	/** Starts an activity by the component tag passed. */
@@ -484,7 +589,7 @@ export default class Application {
 	}
 
 	/** Switch the activity by the route name selected. */
-	public switchActivityViaRouteName(routeNameWithSlash: string, data?: {[key: string]: string}) {
+	public switchActivityViaRouteName(routeNameWithSlash: string, data?: {[key: string]: string}, replaceState?: boolean) {
 		let routeName: string = routeNameWithSlash[0] === "/" ? routeNameWithSlash.substr(1) : routeNameWithSlash
 
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
@@ -497,8 +602,7 @@ export default class Application {
 				extra += `${n === 0 ? "?" : "&"}${key}=${data[key]}`
 			})
 		}
-
-		history.pushState({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeName + extra)
+		history[replaceState ? "replaceState" : "pushState"]({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeName + extra)
 		this.routeChanged(true)
 	}
 
@@ -525,12 +629,8 @@ export default class Application {
 			"activity" +
 			route
 				.split("")
-				.map((char, i, all) => {
-					return char === "/" ? "-slash" + (i === all.length - 1 ? "" : "-") : char
-				})
+				.map((char, i, all) => (char === "/" ? "-slash" + (i === all.length - 1 ? "" : "-") : char))
 				.join("")
-
-		// const elementName = "activity" + route.split("/").join("-slash")
 
 		// Register the component
 		this.registerComponent(activity, false, elementName)
@@ -550,12 +650,15 @@ export default class Application {
 	public start(args: {activityDefinitions: {[route: string]: Function}; componentDefinitions: Function[]}) {
 		this.started = true
 
+		// Export the app to the window global
+		window["app"] = this
+
 		// Attempt to register the colour schema
 		try {
 			this.setColorSchema(this.currentColorScheme)
 		} catch (ex) {
 			if (ex instanceof ColorSchemaDoesNotExistError) {
-				console.warn("🌳🏗 ⚠️ You haven't specified any color schemes. Consider doing so for dark mode support with `app.registerColorScheme()`")
+				console.warn("🌳🏗 ⚠️ You haven't specified any color schemes. You must register a dark and light color scheme.`")
 			}
 		}
 
@@ -582,7 +685,9 @@ export default class Application {
 		this.hashChanged()
 
 		const t = performance.now() - this.constructTime
-		console.info("Application `" + this.applicationName + "` started in", t, "ms")
+		if (this.appSetup) this.appSetup(this.currentAppState)
+
+		console.info('Application "' + this.applicationName + '" in state "' + this.currentAppState + '" started in', t, "ms")
 		if (t > 1500) {
 			console.warn("Heads up! Your application took longer than 1.5 seconds to start. Your user may bail in this time. Consider the size of your assets, along with the number of complex components you are loading.")
 		}

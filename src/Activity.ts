@@ -1,20 +1,17 @@
 /** @format */
 
 import Component from "./Component"
+import {ModalComponent} from "./index"
 
 abstract class Activity extends Component {
+	/** Whether the activity runs in full screen */
+	public fullScreen: boolean | null = false
+
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
-	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => HTMLElement} = {}
+	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent} = {}
 
 	/** Registers a hash function on this modal. */
-	protected registerModal(hash: string, callback: (properties: {[key: string]: string}) => HTMLElement, trigger?: HTMLElement) {
-		if (trigger) {
-			trigger.addEventListener("click", (ev) => {
-				ev.preventDefault()
-				location.hash = hash
-			})
-		}
-
+	protected hookModalToHash(hash: string, callback: (properties: {[key: string]: string}) => ModalComponent) {
 		this.registeredModalHooks[hash] = callback
 	}
 
@@ -22,15 +19,37 @@ abstract class Activity extends Component {
 	abstract activityTitle: string
 
 	/** Fires when the activity is switched to. Unlike `setup`, this is fired every time the component is switched to. `setup` is only fired when the component is loaded. */
-	abstract switchedTo(args: {[key: string]: string}): Promise<void> | void
+	abstract switchedTo(args: {[key: string]: string}): void
 
-	constructor(initialHTML: string, initialCSS: string) {
-		super(
-			initialHTML,
-			`
+	constructor(isolate: boolean = true) {
+		super(isolate)
+
+		if (!this.isActivity) {
+			throw new Error("This class isn't a valid activity. It must extend the Activity class.")
+		}
+
+		// TODO: Ensure this class is declared through the right function
+	}
+
+	/** Whether this is the main activity */
+	public isDefaultActivity() {
+		return this.tagName.toLowerCase() === "activity-default"
+	}
+
+	/** Whether the two activities are of the same type. */
+	public isSameActivity($item: Activity): boolean {
+		return $item.tagName.toLowerCase() === this.tagName.toLowerCase()
+	}
+
+	public readonly isActivity = true
+
+	public async connectedCallback() {
+		this.css(`
 			:host {
 				position: fixed;
 				width: 100%;
+
+				background: ${this.app.getSchemaProperty("applicationBackground")};
 
 				top: var(--activity-top);
 				left: var(--activity-left);
@@ -61,33 +80,10 @@ abstract class Activity extends Component {
 					transform: translateX(50%);
 				}
 			}
+		`)
 
-			${initialCSS}
-		`
-		)
-
-		if (!this.isActivity) {
-			throw new Error("This class isn't a valid activity. It must extend the Activity class.")
-		}
-
-		// TODO: Ensure this class is declared through the right function
-	}
-
-	/** Whether this is the main activity */
-	public isDefaultActivity() {
-		return this.tagName.toLowerCase() === "activity-default"
-	}
-
-	/** Whether the two activities are of the same type. */
-	public isSameActivity($item: Activity): boolean {
-		return $item.tagName.toLowerCase() === this.tagName.toLowerCase()
-	}
-
-	public readonly isActivity = true
-
-	public async connectedCallback() {
-		super.connectedCallback()
 		this.setAttribute("activity", "")
+		super.connectedCallback()
 	}
 
 	public destroy() {

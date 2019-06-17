@@ -1,7 +1,18 @@
 /** @format */
 
+import Application from "./Application"
+import ComponentCore from "./ComponentCore"
+
 window.addEventListener("unhandledrejection", (ex) => {
 	if (ex.reason && ex.reason.message === "Illegal constructor") {
+		console.warn("🌳🏗 It looks like you might be trying to construct a component using `new ()` without registering it first, make sure your `app.start()` includes all the definitions you're trying to use in your app.")
+		// console.log(ex)
+	}
+})
+
+window.addEventListener("error", (ex) => {
+	console.log(ex)
+	if (ex.message === "Uncaught TypeError: Illegal constructor") {
 		console.warn("🌳🏗 It looks like you might be trying to construct a component using `new ()` without registering it first, make sure your `app.start()` includes all the definitions you're trying to use in your app.")
 		// console.log(ex)
 	}
@@ -21,212 +32,30 @@ window.addEventListener("unhandledrejection", (ex) => {
  *
  * @author Benjamin Gwynn
  **/
-abstract class Component extends HTMLElement {
-	private readonly componentCSS: string
-
-	private static commonCSSBlobURLs: string[] = []
-	private static cachedComponentCSSBlobURLs: {[tagName: string]: string} = {}
-
-	/** Setup for the component, such as adding events, etc. This should be here, and not in the constructor. */
-	abstract setup(): void
-
-	/**
-	 * Add common CSS. This is added to all components constructed after this function is fired.
-	 *
-	 * **This is not an excuse for poor practice** - e.g. this should not be used to add a global `.row` as this will impact performance and confusion. Instead, consider defining a `row` component.
-	 **/
-	public static addCommonCSS(css: string) {
-		const newBlob = new Blob([css], {type: "text/css"})
-		Component.commonCSSBlobURLs.push(URL.createObjectURL(newBlob))
-	}
-
-	/** Defines whether to use `display:"none"` on an element before its CSS has been parsed. */
-	private static hideBeforeCSS = true
-
-	/** Defines whether to force elements to use `style` tags for their CSS, or whether to use blobs. True to force blobs, false to force `style` tags. Leaving `undefined` forces neither option and will automatically decide whether it's appropriate. */
-	private static forceCSSMethod: boolean | undefined = undefined
-
-	/**
-	 * Does the following:
-	 * * Removes `//` comments from CSS.
-	 * * Auto-prefixes 2019 browser vendor prefixes (user-select, etc)
-	 */
-	private async parseCSS(inputCSS: string): Promise<string> {
-		// TODO: This should start a worker thread that parses the CSS
-		return inputCSS
-	}
-
-	/** Represents the root of the component where other Elements should be appended to and modified. Internally, this is either the component itself or a shadow root, depending on the components isolation setting. */
-	public $root: Component | ShadowRoot | HTMLElement
-
-	/** Construct with initialHTML and initialCSS. This is the HTML and CSS the element will be constructed with, along with the common stuff. */
-	constructor(initialHTML: string = "", initialCSS: string = "", private isolate: boolean = true) {
-		super()
-
-		if (initialHTML.includes("</slot>")) {
-			console.warn(this.getClassName(), "This component contains a `slot` element. Slotted content is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
-		}
-
-		if (initialCSS.includes(":host>") || initialCSS.includes(":host >")) {
-			console.warn(this.getClassName(), "This component contains a `:host >` CSS selector. This is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
-		}
-
-		// Isolate determines if the CSS should attempt to isolate
-		if (this.isolate) {
-			this.$root = this.attachShadow({mode: "open"})
+export default abstract class Component extends ComponentCore {
+	/** Back-reference to the app this component was created on. */
+	public get app(): Application {
+		const app = <any>window["app"]
+		if (app instanceof Application) {
+			return <Application>app
 		} else {
-			this.$root = this
-		}
-
-		this.$root.innerHTML = initialHTML
-		this.componentCSS = initialCSS
-	}
-
-	/**
-	 * Adds an element to the component.
-	 * @deprecated use `<Component>.$root.appendChild()` instead.
-	 * */
-	public addElement($element: HTMLElement): void {
-		console.warn("`<Component>.addElement()` is deprecated. Use `<Component>.$root.appendChild()` instead.")
-		this.$root.appendChild($element)
-	}
-
-	/** Find a single element and return it. Errors if the element does not exist. To find an element that may exist, use `$_` */
-	public $(query: string, $root: HTMLElement | ShadowRoot = this.$root): HTMLElement {
-		if (!$root) throw new Error("Missing root for the query.")
-
-		const $e = $root.querySelector(query)
-
-		if ($e && $e instanceof HTMLElement) {
-			return $e
-		}
-
-		throw new Error(`Selector on CustomElement failed for selectorQuery: ${query}`)
-	}
-
-	/** Short-hand for selecting `Component` items from the current parent `Component`. Throws fatal error if the component doesn't exist or if the component is a standard HTMLElement. */
-	public $c(query: string, $root: HTMLElement | ShadowRoot = this.$root): Component {
-		const $r = this.$(query, $root)
-		if ($r instanceof Component) return $r
-		throw new Error(`Selector on CustomElement failed for selectorQuery as the query is not a valid Component: ${query}`)
-	}
-
-	/** Find multiple elements as an array. If no elements exist, returns an empty array. */
-	public $$(query: string, loop?: ($e: HTMLElement, index: number) => void, $root: HTMLElement | ShadowRoot = this.$root): HTMLElement[] {
-		if (!$root) throw new Error("Missing root for document query.")
-		const $$e = $root.querySelectorAll(query)
-		const $$r: HTMLElement[] = []
-		for (let i = 0; i < $$e.length; i += 1) {
-			const $e = $$e[i]
-			if ($e instanceof HTMLElement) {
-				if (loop) {
-					loop($e, i)
-				} else {
-					$$r.push($e)
-				}
-			}
-		}
-
-		// try getting from real root
-		if ($$r.length === 0 && $root === this.shadowRoot && this.shadowRoot.querySelector("slot")) {
-			return this.$$(query, loop, this)
-		}
-
-		return $$r
-	}
-
-	/** Returns whether or not the element exists as a boolean. */
-	public $is(query: string, $root?: HTMLElement | ShadowRoot): boolean {
-		return !!this.$$(query, undefined, $root).length
-	}
-
-	/** Returns the element, or returns null if the element doesn't exist. */
-	public $_(query: string, $root?: HTMLElement | ShadowRoot): HTMLElement | null {
-		if (this.$is(query, $root)) {
-			return this.$(query, $root)
-		} else {
-			return null
-		}
-	}
-
-	/** Connect this component to another component, or a HTML element. */
-	public connectTo($to: HTMLElement | Component) {
-		if ($to instanceof Component) {
-			$to.$root.appendChild(this)
-		} else {
-			$to.appendChild(this)
+			throw new Error("`app` property is missing on the global `window` property. Has the application been started?")
 		}
 	}
 
 	/** Returns whether the element is visible by the UA or not. */
 	public get visible(): boolean {
-		return this.getBoundingClientRect().top <= window.innerHeight && this.getBoundingClientRect().bottom > 0 && getComputedStyle(this).visibility !== "hidden"
-	}
-
-	private connectedCallbackRan = false
-
-	/** Shortcut to get CSS variable value */
-	public getCssVar(variableName: string) {
-		return window.getComputedStyle(this).getPropertyValue(variableName)
-	}
-
-	/** Returns the class name of the component as a string. */
-	protected getClassName(): string {
-		// @ts-ignore
-		if (this.__proto__ && this.__proto__.constructor && this.__proto__.constructor.name) return this.__proto__.constructor.name
-		return this.tagName.toLowerCase()
-	}
-
-	public async connectedCallback() {
-		if (this.connectedCallbackRan) {
-			console.warn(this, "connected callback already ran.")
-			return
-		}
-
-		// Only ever run this function once
-		this.connectedCallbackRan = true
-
-		// Set the [component] attribute on this element
-		this.setAttribute("component", "")
-
-		// Hide this element
-		if (Component.hideBeforeCSS) {
-			this.style.display = "none"
-		}
-
-		// If the CSS is isolated, add blob tags defining the CSS
-		if (this.isolate) {
-			// Add the common CSS
-			for (let i = 0; i < Component.commonCSSBlobURLs.length; i++) {
-				const $link = document.createElement("link")
-				$link.setAttribute("common-css", "")
-				$link.rel = "stylesheet"
-				$link.href = Component.commonCSSBlobURLs[i]
-				this.$root.appendChild($link)
+		const vis = this.getBoundingClientRect().top <= window.innerHeight && this.getBoundingClientRect().bottom > 0 && getComputedStyle(this).visibility !== "hidden"
+		const activity = this.getActivity()
+		if (activity) {
+			if (this.app.isActivityActive(activity)) {
+				return vis
+			} else {
+				return false
 			}
+		} else {
+			return vis
 		}
-
-		// If we don't have the blob CSS for this, create it
-		if (!Component.cachedComponentCSSBlobURLs[this.tagName]) {
-			const parsedCSS = await this.parseCSS(this.componentCSS)
-			const cssBlob = new Blob([parsedCSS], {type: "text/css"})
-			// and put it in cache
-			Component.cachedComponentCSSBlobURLs[this.tagName] = URL.createObjectURL(cssBlob)
-		}
-
-		// Add the element CSS via a <link> element
-		const $link = document.createElement("link")
-		$link.setAttribute("element-css", "")
-		$link.rel = "stylesheet"
-		$link.href = Component.cachedComponentCSSBlobURLs[this.tagName] // get from cache
-		this.$root.appendChild($link)
-
-		if (Component.hideBeforeCSS) {
-			$link.onload = () => (this.style.display = "")
-		}
-
-		// Run the setup function
-		this.setup()
 	}
 }
 
@@ -285,5 +114,3 @@ Component.addCommonCSS(`
 		background: none;
 	}
 `)
-
-export default Component

@@ -4,10 +4,6 @@ import FrameComponent from "./FrameComponent"
 
 /** Empty component for running comparisons against. */
 class DummyComponent extends FrameComponent {
-	constructor() {
-		super("", "")
-	}
-
 	setup() {
 		// ...
 	}
@@ -37,9 +33,15 @@ export default abstract class ReactiveComponent extends FrameComponent {
 	public reactPropertiesNames: string[] = []
 	private reactPropertiesValues: {[property: string]: any} = []
 
-	abstract reactMode: ReactionMode
+	/** Override with `reactMode = ReactionMode.Function` or `reactMode = ReactionMode.Function + ReactionMode.CSSVariable` */
+	protected reactMode: ReactionMode = ReactionMode.CSSVariable + ReactionMode.Function
 
 	private propertyWatcher = () => {
+		if (!this.connectedCallbackFinished) {
+			console.log("This element isn't connected yet.")
+			return
+		}
+
 		for (let i = 0; i < this.reactPropertiesNames.length; i++) {
 			const prop = this.reactPropertiesNames[i]
 			const lastValue = this.reactPropertiesValues[prop]
@@ -67,6 +69,7 @@ export default abstract class ReactiveComponent extends FrameComponent {
 				if (this.reactMode === ReactionMode.Function + ReactionMode.CSSVariable) {
 					if (functionName in this && typeof this[functionName] === "function") {
 						this[functionName](currentValue)
+						setCSS()
 					} else {
 						setCSS()
 					}
@@ -100,16 +103,21 @@ export default abstract class ReactiveComponent extends FrameComponent {
 		return "--" + this.buildAttributeNameFromProp(prop)
 	}
 
-	constructor(initialHTML: string, initialCSS: string, isolate?: boolean) {
-		super(initialHTML, initialCSS, isolate)
+	// async connectedCallback() {
+	// 	console.log("reactive cc")
+	// 	await super.connectedCallback()
+	// 	console.log("reactive post-cc")
+	// }
+
+	constructor(isolate?: boolean) {
+		super(isolate)
 		const keysReact = Object.keys(this)
 
-		/** HACK: Wait for frame so we get all the properites of a sub-class post-construction. */
+		/** HACK: Wait for frame so we get all the properties of a sub-class post-construction. */
 		requestAnimationFrame(() => {
 			const keysThis = Object.keys(this)
 			const keysComp = Object.keys(document.createElement("dummy-component"))
 			const considerWatching = keysThis.filter((x) => !keysComp.includes(x) && !keysReact.includes(x) && x !== "reactMode" && x[0] !== "_")
-			const toWatch: string[] = []
 			for (let i = 0; i < considerWatching.length; i++) {
 				const prop = considerWatching[i]
 				const value = this[prop]
@@ -126,26 +134,26 @@ export default abstract class ReactiveComponent extends FrameComponent {
 						} else {
 							this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. A function exists, so I'll fire \`this.${functionName}()\`. I won't adjust the CSS variable as this is neither a string or a number.`)
 						}
-						toWatch.push(prop)
+						this.reactPropertiesNames.push(prop)
 					} else if (typeof value === "string" || typeof value === "number") {
 						this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. A function for this doesn't exist, so I'll *ONLY* modify the CSS Variable: ${ReactiveComponent.buildCSSVarNameFromProp(prop)}. Declare \`this.${functionName}()\` to react to a function instead.`)
-						toWatch.push(prop)
+						this.reactPropertiesNames.push(prop)
 					} else if (typeof value === "boolean") {
 						this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. A function for this doesn't exist. Because ReactionMode is set to CSSVariable and this is a boolean, I'll instead set/remove the attribute \`${prop}\`. Declare \`this.${functionName}()\` to react to a function instead.`)
-						toWatch.push(prop)
+						this.reactPropertiesNames.push(prop)
 					} else {
 						this.setupLog(`Not watching \`this.${prop}\` as it is not a string or number, so cannot be converted to a CSS variable. Declare \`this.${functionName}()\` to react to a function instead.`)
 					}
 				} else if (this.reactMode === ReactionMode.Function && functionName in this && typeof this[functionName] === "function") {
 					this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. Will fire this.${functionName}()`)
-					toWatch.push(prop)
+					this.reactPropertiesNames.push(prop)
 				} else if (this.reactMode === ReactionMode.CSSVariable) {
 					if (typeof value === "boolean") {
 						this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. Because ReactionMode is set to CSSVariable and this is a boolean, I'll instead set/remove the attribute \`${prop}\``)
-						toWatch.push(prop)
+						this.reactPropertiesNames.push(prop)
 					} else if (typeof value === "string" || typeof value === "number") {
 						this.setupLog(`Watching \`this.${prop}\`. Initial value: ${value}. Will modify the CSS Variable: ${ReactiveComponent.buildCSSVarNameFromProp(prop)}`)
-						toWatch.push(prop)
+						this.reactPropertiesNames.push(prop)
 					} else {
 						this.setupLog(`Cannot watch \`this.${prop}\`. ReactionMode is set to CSSVariable and the property is neither a string, number or a boolean.`)
 					}
@@ -154,9 +162,9 @@ export default abstract class ReactiveComponent extends FrameComponent {
 				}
 			}
 
-			if (toWatch.length) {
-				this.reactPropertiesNames = toWatch
+			if (this.reactPropertiesNames.length) {
 				this.registerFrameCall(this.propertyWatcher)
+				this.setupLog("Registered the property watcher.")
 			} else {
 				this.setupLog("Not watching any properties so I'm not going to run my reaction check to save performance.")
 			}
