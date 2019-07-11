@@ -16,11 +16,7 @@ export function sleepFrames(nFrames: number) {
 	return new Promise((resolve) => {
 		let n = 0
 		const f = () => {
-			if (n++ === nFrames) {
-				resolve()
-			} else {
-				requestAnimationFrame(f)
-			}
+			n++ === nFrames ? resolve() : requestAnimationFrame(f)
 		}
 		requestAnimationFrame(f)
 	})
