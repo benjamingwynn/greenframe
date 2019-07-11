@@ -49,6 +49,9 @@ abstract class Activity extends Component {
 				position: fixed;
 				width: 100%;
 
+				display: flex;
+				flex-flow: column nowrap;
+
 				background: ${this.app.getSchemaProperty("applicationBackground")};
 
 				top: var(--activity-top);
