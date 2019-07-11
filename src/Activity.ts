@@ -60,11 +60,11 @@ abstract class Activity extends Component {
 			}
 
 			:host([animate]) {
-				animation: activity-in 0.2s;
+				animation: activity-in var(--animation-time);
 			}
 
 			:host([destroyed]) {
-				animation: activity-out 0.2s;
+				animation: activity-out var(--animation-time);
 			}
 
 			@keyframes activity-in {
