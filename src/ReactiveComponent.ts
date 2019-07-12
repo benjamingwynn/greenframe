@@ -51,7 +51,7 @@ export default abstract class ReactiveComponent extends FrameComponent {
 				if (typeof currentValue === "number") {
 					this.style.setProperty(ReactiveComponent.buildCSSVarNameFromProp(prop), `${currentValue}`)
 				} else if (typeof currentValue === "string") {
-					this.style.setProperty(ReactiveComponent.buildCSSVarNameFromProp(prop), `${currentValue}`)
+					this.style.setProperty(ReactiveComponent.buildCSSVarNameFromProp(prop), `"${currentValue}"`)
 				} else if (typeof currentValue === "boolean") {
 					if (currentValue) {
 						this.setAttribute(ReactiveComponent.buildAttributeNameFromProp(prop), "")
