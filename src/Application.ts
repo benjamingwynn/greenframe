@@ -3,7 +3,7 @@
 import ComponentCore from "./ComponentCore"
 import Activity from "./Activity"
 import {toKebabCase} from "./util"
-import {ModalComponent} from "./index"
+import {ModalComponent, ErrorActivity, util} from "./index"
 
 /** The colour scheme for the component. This is a simple way to set CSS variables for different schemes. Greenframe will automatically decide what's best for the user. */
 export type ColorSchemaName = "dark" | "light" | "highContrast"
@@ -270,8 +270,77 @@ export default class Application {
 			}
 		}
 
-		// TODO: Define a handler for 404's
-		throw new Error("No activity exists at this route, and there is no handler for 404's.")
+		if (this.notFoundActivityRegistered) {
+			this.startActivity(Application.NotFoundActivityTagName, !animate)
+		} else {
+			// TODO: Define a handler for 404's
+			throw new Error("No activity exists at this route, and there is no handler for 404's.")
+		}
+	}
+
+	private static ErrorActivityTagName = "activity-error"
+	// private errorActivityClass?: Function
+	public registerErrorActivity(activityClass: Function) {
+		// if (this.errorActivityClass) {
+		// throw new Error("`registerErrorActivity` can only be called once.")
+		// }
+
+		// this.errorActivityClass = activity
+
+		this.registerComponent(activityClass, true, Application.ErrorActivityTagName)
+
+		let firedErrorActivity: boolean = false
+
+		const startErrorActivity = (ex: Error) => {
+			if (firedErrorActivity) {
+				console.error("We've already attempted to start the error activity, but there was an additional error prior to creating the error activity. That's bad.")
+				return
+			}
+
+			firedErrorActivity = true
+
+			console.warn("...1")
+
+			//@ts-ignore
+			const activity: any = new activityClass(ex)
+
+			console.warn("...2")
+
+			if (activity instanceof ErrorActivity) {
+				this.$root.connect(activity)
+			} else {
+				console.error("The activity you registered earlier with `<Application>.registerErrorActivity()` doesn't seem to be a valid ErrorActivity.")
+			}
+		}
+
+		window.addEventListener("error", (event) => {
+			if (event.error instanceof Error) {
+				startErrorActivity(event.error)
+			} else {
+				console.error("I caught a global error, but it was of an invalid type to be handled by an ErrorActivity.")
+			}
+		})
+
+		window.addEventListener("unhandledrejection", (event) => {
+			if (event.reason instanceof Error) {
+				startErrorActivity(event.reason)
+			} else {
+				console.error("I caught a global **Unhandled Promise Rejection** error, but it was of an invalid type to be handled by an ErrorActivity.")
+			}
+		})
+	}
+
+	private static NotFoundActivityTagName = "activity-not-found"
+	private notFoundActivityRegistered: boolean = false
+	public registerNotFoundActivity(activity: Function) {
+		if (this.notFoundActivityRegistered) {
+			throw new Error("NotFoundActivity already registered. You can only execute `<Application>.registerNotFoundActivity` once.")
+		}
+
+		this.notFoundActivityRegistered = true
+
+		// Register the component
+		this.registerComponent(activity, true, Application.NotFoundActivityTagName)
 	}
 
 	/** Sets a CSS variable on the root of the Application */

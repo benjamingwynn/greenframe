@@ -8,5 +8,6 @@ import FrameComponent from "./FrameComponent"
 import * as DOMUtil from "./DOMUtil"
 import * as util from "./util"
 import ModalComponent from "./ModalComponent"
+import ErrorActivity from "./ErrorActivity"
 
-export {ModalComponent, Application, Activity, Component, ReactiveComponent, FrameComponent, DOMUtil, util, ReactionMode}
+export {ModalComponent, Application, Activity, Component, ReactiveComponent, FrameComponent, DOMUtil, util, ReactionMode, ErrorActivity}
