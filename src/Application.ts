@@ -94,6 +94,9 @@ export default class Application {
 	/** Reference to the root object of the application. */
 	public $root: ApplicationRoot
 
+	/** Declares whether applications should throw a fatal error if modals cannot be created from their hashchange handlers. */
+	static ThrowFatalOnNullModalObject: boolean = true
+
 	/** Reference to the modal container. */
 	public get $modalContainer(): HTMLElement {
 		return this.$root.$("#modal-container")
