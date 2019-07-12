@@ -87,13 +87,6 @@ class ApplicationRoot extends ComponentCore {
 	}
 }
 
-// if the user hits escape, close modals
-window.addEventListener("keyup", (ev) => {
-	if (ev.key === "Escape") {
-		location.hash = ""
-	}
-})
-
 /**
  * Application.ts holds application related functions. It splits the Activity namespace up, so that the activity is free to do only activity things. Only one application may exist per window.
  */
@@ -755,11 +748,14 @@ export default class Application {
 		// Register hooks
 		window.addEventListener("popstate", () => {
 			this.routeChanged(true)
-			this.hashChanged()
+			this.hashChange()
+		})
+
+		window.addEventListener("hashchange", () => {
+			this.hashChange()
 		})
 
 		this.routeChanged(false)
-		this.hashChanged()
 
 		const t = performance.now() - this.constructTime
 		if (this.appSetup) this.appSetup(this.currentAppState)

@@ -8,28 +8,36 @@ abstract class Activity extends Component {
 	public fullScreen: boolean | null = false
 
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
-	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent} = {}
+	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent | null} = {}
 
 	/** Registers a hash function on this modal. */
-	protected hookModalToHash(hash: string, callback: (properties: {[key: string]: string}) => ModalComponent) {
+	public hookModal(hash: string, callback: (properties: {[key: string]: string}) => ModalComponent | null) {
+		// Register
 		this.registeredModalHooks[hash] = callback
+		// Detect a hash change
+		this.app.hashChange()
+	}
+
+	/** Starts a modal via the modals hash name and with the properties provided. */
+	public startModal(hash: string, properties: {[key: string]: any} = {}) {
+		if (!this.registeredModalHooks[hash]) {
+			throw new Error("No modal is declared under the hash #" + hash)
+		}
+
+		let extra = ""
+		const keys = Object.keys(properties)
+		keys.forEach((key, n) => {
+			extra += `${n === 0 ? "?" : "&"}${key}=${JSON.stringify(properties[key])}`
+		})
+
+		location.hash = "#" + hash + extra
 	}
 
 	/** The title of this activity. */
-	abstract activityTitle: string
+	public activityTitle?: string
 
 	/** Fires when the activity is switched to. Unlike `setup`, this is fired every time the component is switched to. `setup` is only fired when the component is loaded. */
 	abstract switchedTo(args: {[key: string]: string}): void
-
-	constructor(isolate: boolean = true) {
-		super(isolate)
-
-		if (!this.isActivity) {
-			throw new Error("This class isn't a valid activity. It must extend the Activity class.")
-		}
-
-		// TODO: Ensure this class is declared through the right function
-	}
 
 	/** Whether this is the main activity */
 	public isDefaultActivity() {
