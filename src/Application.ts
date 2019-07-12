@@ -226,11 +226,11 @@ export default class Application {
 		console.debug("Route changed:", thisRoute)
 
 		const switchTo = async (activity: Activity) => {
-			if (typeof activity.fullScreen === "boolean") {
-				if (activity.fullScreen === true) {
-					this.hideFixedComponents()
-				} else {
+			if (typeof activity.fixedComponentVisibility === "boolean") {
+				if (activity.fixedComponentVisibility === true) {
 					this.showFixedComponents()
+				} else {
+					this.hideFixedComponents()
 				}
 			}
 

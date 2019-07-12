@@ -4,8 +4,8 @@ import Component from "./Component"
 import {ModalComponent} from "./index"
 
 abstract class Activity extends Component {
-	/** Whether the activity runs in full screen */
-	public fullScreen: boolean | null = false
+	/** Hide (false)/show (true) fixed components when this activity is switched to. Set to null to not change the state of fixed components. */
+	public fixedComponentVisibility: boolean | null = null
 
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
 	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent | null} = {}
