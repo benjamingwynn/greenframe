@@ -206,6 +206,21 @@ export default abstract class ComponentCore extends HTMLElement {
 		}
 	}
 
+	/** Connect this component, and wait for it to finish loading before resolving a promise. */
+	public connectToAndWait($to: HTMLElement | ComponentCore): Promise<void> {
+		return new Promise((resolve) => {
+			this.connectTo($to)
+			const f = () => {
+				if (this.connectedCallbackFinished) {
+					resolve()
+				} else {
+					requestAnimationFrame(f)
+				}
+			}
+			requestAnimationFrame(f)
+		})
+	}
+
 	private _parentActivity?: Activity
 
 	/** Gets the activity the component is attached to. */
