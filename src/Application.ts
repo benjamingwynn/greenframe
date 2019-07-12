@@ -199,6 +199,15 @@ export default class Application {
 
 		// Setup the title of the window
 		this.$title = <HTMLTitleElement>document.head.querySelector("title")
+
+		// Stop browsers from opening files when dragged in
+
+		window.addEventListener("dragover", (ev) => {
+			ev.preventDefault()
+		})
+		window.addEventListener("drop", (ev) => {
+			ev.preventDefault()
+		})
 	}
 
 	/** Map of the registered activities via route name. Value is the string of the defined custom element. */
