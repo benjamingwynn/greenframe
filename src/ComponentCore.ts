@@ -117,7 +117,19 @@ export default abstract class ComponentCore extends HTMLElement {
 
 	/** Quickly add a heading to the component. */
 	public h(a: string, b?: string) {
-		this.connect(ComponentCore.ParseShorthandElement("h1", Array.from(arguments)))
+		let n = 1
+		let e = this.$root.lastElementChild
+		while (e && e.tagName[0] === "H" && n < 6) {
+			n++
+			e = e.lastElementChild
+		}
+
+		let hCount = "h" + n.toString()
+		if (hCount === "h1" || hCount === "h2" || hCount === "h3" || hCount === "h4" || hCount === "h5" || hCount === "h6") {
+			this.connect(ComponentCore.ParseShorthandElement(hCount, Array.from(arguments)))
+		} else {
+			throw new Error("Unexpected H count, this is a Greenframe implementation error.")
+		}
 	}
 
 	/**
