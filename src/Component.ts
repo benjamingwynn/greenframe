@@ -64,38 +64,19 @@ Component.addCommonCSS(`
 	:host {
 		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, system-ui, sans-serif;
 		font-size: 1em;
-		display: block;
 		cursor: default;
 		user-select: none;
 		box-sizing: border-box;
 		color: var(--schema-text);
 	}
 
-	h1, h2, h3, h4, h5, h6, button, p, div, main, aside, section, span, img {
-		display: block;
-		box-sizing: border-box;
-		outline: none;
-		overflow-y: hidden;
-		overflow-x: hidden;
+	* {
 		-webkit-tap-highlight-color: transparent;
 		-webkit-user-drag: none;
 		-webkit-appearance: none;
-		margin: 0;
-		flex: auto 0 0;
-	}
-
-	a, button {
-		display: inline-block;
-		color: inherit;
-		text-decoration: none;
-		cursor: pointer;
-		border: none;
+		box-sizing: border-box;
 		font-size: 1em;
-		padding: 0;
-	}
-
-	a *, button * {
-		cursor: inherit;
+		outline: 0;
 	}
 
 	style, script, link, meta {
@@ -104,13 +85,5 @@ Component.addCommonCSS(`
 
 	[hidden] {
 		display: none;
-	}
-
-	slot {
-		display: block;
-	}
-
-	button {
-		background: none;
 	}
 `)
