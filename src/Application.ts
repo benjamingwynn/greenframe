@@ -28,6 +28,7 @@ export type ColorSchema = {
 	formBackground?: string
 	inputBackground?: string
 	inputBorderBlur?: string
+	inputInvalid?: string
 	formNext?: string
 	//[customProperty: string]: string
 }
@@ -133,8 +134,10 @@ export default class Application {
 	private static GetDefaultColorScheme(): ColorSchemaName {
 		const useScheme = localStorage.getItem("greenframe-use-scheme")
 		if (useScheme === "light" || useScheme === "dark" || useScheme === "highContrast") {
+			console.log("Device colorscheme overriden by localStorage['greenframe-use-scheme'] =", useScheme)
 			return useScheme
 		} else {
+			console.log("Detecting colorscheme via media query")
 			return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
 		}
 	}
@@ -142,8 +145,9 @@ export default class Application {
 	public registerColorScheme(name: ColorSchemaName, schema: ColorSchema) {
 		this.registeredColorSchemas[name] = schema
 		const $style = document.createElement("style")
-		$style.setAttribute("color-schema", "")
-		$style.innerHTML = "component-application-root {"
+		$style.setAttribute("color-schema", name)
+
+		$style.innerHTML = "component-" + toKebabCase(ApplicationRoot.name) + " {"
 		for (let item in schema) {
 			$style.innerHTML += "--schema-" + toKebabCase(item) + ": " + schema[item] + ";" + "\n"
 		}
@@ -484,7 +488,7 @@ export default class Application {
 		})
 	}
 
-	/** Register a component to the Application. The component is automatically created based on it's class name. */
+	/** Register a component to the Application. The component is automatically created based on it's class name unless `forceName` is defined.. */
 	private registerComponent(component: Function, dieIfRegistered: boolean = false, forceName?: string): void {
 		const elementName = forceName || "component-" + toKebabCase(component.name)
 		if (customElements.get(elementName)) {
@@ -496,7 +500,7 @@ export default class Application {
 			}
 		} else {
 			customElements.define(elementName, component)
-			console.log("Registered new component:", component.name, "→", elementName)
+			console.log("Registered new component:", component.name, "→", elementName, process.env.NODE_ENV == "production" ? "(I am running in production mode, so my component names are not as verbose, switch to development mode for component names to reflect class names)" : "")
 		}
 	}
 
@@ -534,7 +538,7 @@ export default class Application {
 				const parts = value.split("=")
 
 				if (parts[0]) {
-					result[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1])
+					result[decodeURIComponent(parts[0])] = JSON.parse(decodeURIComponent(parts[1]))
 				}
 
 				return result
@@ -545,18 +549,31 @@ export default class Application {
 	private lastHash = ""
 
 	/** Handles the hash being changed. */
-	private hashChanged() {
+	public hashChange() {
 		const hash = location.hash.split("?")[0].substr(1)
 		if (hash === this.lastHash) return
 		this.lastHash = hash
+		console.log("--hash change --")
 
 		// delete existing modals
 		Array.from(this.$modalContainer.children).forEach(($e) => {
-			$e.addEventListener("animationend", () => {
-				$e.remove()
+			$e.setAttribute("destroyed", "")
+
+			let aniStarted: boolean = false
+
+			$e.addEventListener("animationstart", () => {
+				aniStarted = true
+				$e.addEventListener("animationend", () => {
+					$e.remove()
+				})
 			})
 
-			$e.setAttribute("destroyed", "")
+			util.sleepFrames(1).then(() => {
+				if (!aniStarted) {
+					console.warn("No animation declared for destroying this component. Declare :host([destroyed]) { /* ... */ } in your components CSS to add an animation when this component is destroyed. [" + $e.tagName + "]")
+					$e.remove()
+				}
+			})
 		})
 
 		// Activity.ShowFixedComponents()
@@ -572,8 +589,13 @@ export default class Application {
 
 				const args = this.getHashArguments()
 				const $modal = functionObject(args)
-				$modal.type = "hash"
-				this.$modalContainer.appendChild($modal)
+				if ($modal) {
+					$modal.type = "hash"
+					this.$modalContainer.appendChild($modal)
+				} else {
+					console.warn("Modal object was null, the hash handler probably couldn't create a valid object, so just created nothing instead.")
+					if (Application.ThrowFatalOnNullModalObject) throw new Error("Couldn't create a modal object.")
+				}
 				// functionObject(Activity.ApplicationModalContainer, args)
 			}
 		} else {
@@ -586,37 +608,38 @@ export default class Application {
 		this.$modalContainer.appendChild(modal)
 	}
 
-	/** Starts an activity by the component tag passed. */
-	public startActivity(activityTag: string, dontAnimate?: boolean): Activity {
+	/** Starts an activity by the component tag passed. Unlike in previous versions of greenframe this can only be called internally by the application, if you want to start an activity on a route, call `<Application>.goto(route)` */
+	private startActivity(activityTag: string, noAnimation?: boolean): Activity {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
 		const $active = <Activity | null>this.$root.$_("" + activityTag + ":last-child:not([destroyed])")
 
 		if ($active) {
-			console.warn("This activity is already active. Not starting it.")
+			console.log("This activity is already active. Not starting it.")
 			return $active
 		} else {
 			// check if the activity we already want exists
-			const $loaded = <Activity>this.$root.$_(`${activityTag}:not([destroyed])`)
+			const $loaded = <Activity | undefined>this.$root.$_(`${activityTag}:not([destroyed])`)
 			if ($loaded) {
 				console.log("The activity is already loaded. Bringing into view.")
 
 				// get all the activities after the existing one
 				let $next = $loaded.nextElementSibling
 				while ($next) {
-					if ($next.hasAttribute("activity")) {
-						;(<Activity>$next).destroy()
+					if ($next instanceof Activity) {
+						$next.destroy()
 						console.log("Destroying", $next)
 					}
 
 					$next = $next.nextElementSibling
 				}
+
 				return $loaded
 			} else {
 				const $newActivity = document.createElement(activityTag)
 
 				if ($newActivity instanceof Activity) {
-					if (!dontAnimate) {
+					if (!noAnimation) {
 						$newActivity.setAttribute("animate", "")
 					}
 
@@ -641,11 +664,11 @@ export default class Application {
 		}
 	}
 
-	/** Switch back to the main activity.*/
+	/** Switch back to the main activity. @deprecated use `<Application>.goto("/")` instead. */
 	public switchToMainActivity() {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
-		this.switchActivityViaRouteName("")
+		this.goto("/")
 	}
 
 	/** Returns all activities as an array. */
@@ -663,8 +686,8 @@ export default class Application {
 	}
 
 	/** Switch the activity by the route name selected. */
-	public switchActivityViaRouteName(routeNameWithSlash: string, data?: {[key: string]: string}, replaceState?: boolean) {
-		let routeName: string = routeNameWithSlash[0] === "/" ? routeNameWithSlash.substr(1) : routeNameWithSlash
+	public goto(route: string, data?: {[key: string]: string}, replaceState?: boolean) {
+		let routeNameStripped: string = route[0] === "/" ? route.substr(1) : route
 
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
@@ -676,13 +699,23 @@ export default class Application {
 				extra += `${n === 0 ? "?" : "&"}${key}=${data[key]}`
 			})
 		}
-		history[replaceState ? "replaceState" : "pushState"]({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeName + extra)
+		history[replaceState ? "replaceState" : "pushState"]({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeNameStripped + extra)
 		this.routeChanged(true)
 	}
 
 	/** Builds a title string for use in activity switching */
 	private buildTitle(): string {
 		return `${this.getCurrentActivity().activityTitle} | ${this.applicationName}`
+	}
+
+	private static GenerateActivityName(route: string): string {
+		return (
+			"activity" +
+			route
+				.split("")
+				.map((char, i, all) => (char === "/" ? "-slash" + (i === all.length - 1 ? "" : "-") : char))
+				.join("")
+		)
 	}
 
 	/** Registers the activity for use by the framework. */
@@ -699,23 +732,21 @@ export default class Application {
 			throw new Error("Route `" + route + "` already registered.")
 		}
 
-		const elementName =
-			"activity" +
-			route
-				.split("")
-				.map((char, i, all) => (char === "/" ? "-slash" + (i === all.length - 1 ? "" : "-") : char))
-				.join("")
+		const elementName = Application.GenerateActivityName(route)
 
 		// Register the component
 		this.registerComponent(activity, false, elementName)
 
 		// Define as an activity
 		this.registeredActivities[fullRoute] = elementName
+
 		return route
 	}
 
-	/** A readonly copy of `location.pathname` */
-	public readonly entryPoint: string = location.pathname
+	/** Refreshes the current activity by firing `switchedTo` again. */
+	public refreshCurrentActivity(): void {
+		this.getCurrentActivity().switchedTo(this.getPageArguments())
+	}
 
 	/** Whether the application has been started with `.start()` */
 	private started: boolean = false
@@ -732,7 +763,7 @@ export default class Application {
 			this.setColorSchema(this.currentColorScheme)
 		} catch (ex) {
 			if (ex instanceof ColorSchemaDoesNotExistError) {
-				console.warn("🌳🏗 ⚠️ You haven't specified any color schemes. You must register a dark and light color scheme.`")
+				console.warn("🌳🏗 ⚠️ You haven't specified any color schemes. You must register a dark and light color scheme. (That's why everything might look hotpink!)`")
 			}
 		}
 
