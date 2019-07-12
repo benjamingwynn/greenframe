@@ -4,10 +4,10 @@ import Activity from "./Activity"
 
 /** @format */
 
+export type ComponentLoadBehavior = "hideBeforeReady" | "useLoadAttribute" | false
+
 /**
- *  A BaseComponent is a component that does not have an `app` property. It can run without an App. You should use `Component` though.
- *
- * @format
+ *  ComponentCore is a component that does not have an `app` property. It can run without an App. You should use `Component` though.
  */
 
 export default abstract class ComponentCore extends HTMLElement {
@@ -27,8 +27,12 @@ export default abstract class ComponentCore extends HTMLElement {
 		ComponentCore.commonCSSSource.push(css)
 	}
 
-	/** Defines whether to use `display:"none"` on an element before its CSS has been parsed. */
-	private static hideBeforeCSS = true
+	/**
+	 * Defines the components load behavior before its CSS has been parsed and it's setup is complete:
+	 * * `"hideBeforeReady"` - hide a component before it is ready. (default)
+	 * * `"useLoadAttribute"` - sets the `load` attribute at the components connection and removes it when it's ready.
+	 */
+	protected loadBehavior: ComponentLoadBehavior = "hideBeforeReady"
 
 	/** Defines whether to force elements to use `style` tags for their CSS, or whether to use blobs. True to force blobs, false to force `style` tags. Leaving `undefined` forces neither option and will automatically decide whether it's appropriate. */
 	private static forceCSSMethod: boolean | undefined = undefined
@@ -58,8 +62,12 @@ export default abstract class ComponentCore extends HTMLElement {
 		this.removeAttribute("hidden")
 	}
 
-	/** Inserts raw HTML markup into the component */
+	private static HTMLInsertCount: number = 0
+	/** Inserts raw HTML markup into the component. For performance reasons this should be used sparingly, like when inserting SVG's or existing HTML. */
 	public html(html: string) {
+		if (ComponentCore.HTMLInsertCount++ > 100) {
+			console.warn("🌳🏗⚠️ Heads up! You're creating a lot of elements with <Component>.html() - this will affect performance, consider using the DOM instead to add elements.")
+		}
 		// this.$root.innerHTML += html
 		const parser = new DOMParser()
 		const doc = parser.parseFromString(`<component-inner>${html}</component-inner>`, "text/html")
@@ -78,8 +86,15 @@ export default abstract class ComponentCore extends HTMLElement {
 			console.warn(this.getClassName(), "This component contains a `:host >` CSS selector. This is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
 		}
 
+		// Remove "//" comments from CSS
+		// TODO: performance assessment
+		css = css
+			.split("\n")
+			.filter((line) => line.trim().indexOf("//") !== 0)
+			.join("\n")
+
 		const $link = document.createElement("link")
-		$link.href = this.isolate ? URL.createObjectURL(new Blob([css], {type: "text/css"})) : this.parseCSS(css)
+		$link.href = this.isolate ? URL.createObjectURL(new Blob([css], {type: "text/css"})) : this.componentCSStoIsolatedCSS(css)
 		$link.setAttribute("element-css", "")
 		$link.rel = "stylesheet"
 
@@ -90,23 +105,29 @@ export default abstract class ComponentCore extends HTMLElement {
 		let props: string = ""
 		let inner: string = ""
 
-		for (let i = 0; i < args.length; i++) {
-			const arg = args[i]
-			if ((arg.includes("#") || arg.includes(".")) && !arg.includes(" ")) {
-				props = arg
-			} else {
-				inner = arg
+		// TODO: ParseShorthandElement(..., [".whatever", ".whatever"] ) causes invalid element creation
+
+		if (args.length === 1) {
+			inner = args[0]
+		} else {
+			for (let i = 0; i < args.length; i++) {
+				const arg = args[i]
+				if ((arg.includes("#") || arg.includes(".")) && !arg.includes(" ")) {
+					props = arg
+				} else {
+					inner = arg
+				}
 			}
 		}
 
-		// TODO: Attribute support`
+		// TODO: Attribute support
 
 		let id = (props.match(/#[a-zA-Z-]*/) || [""])[0].substr(1)
 		let classList = Array.from(props.match(/\.[a-zA-Z]*/g) || [""])
 		const $element = document.createElement(tagName)
 		$element.id = id
 		$element.innerHTML = inner
-		$element.className = classList.join(" ")
+		$element.className = classList.map((c) => c.trim().substr(1)).join(" ")
 		return $element
 	}
 
@@ -256,7 +277,7 @@ export default abstract class ComponentCore extends HTMLElement {
 		return window.getComputedStyle(this).getPropertyValue(variableName)
 	}
 
-	/** Shortcut to set a CSS variable value */
+	/** Shortcut to set a CSS variable value, ensure your variable name is written as kebab-case (--like-this) */
 	public setCssVar(variableName: string, newValue: string) {
 		this.style.setProperty(variableName, newValue)
 	}
@@ -268,7 +289,17 @@ export default abstract class ComponentCore extends HTMLElement {
 		return this.tagName.toLowerCase()
 	}
 
-	private parseCSS(css: string): string {
+	private uniqueClass: string = ""
+	private componentCSStoIsolatedCSS(css: string): string {
+		if (!this.uniqueClass) {
+			this.uniqueClass =
+				".gf-" +
+				btoa(Math.random().toString())
+					.split("=")
+					.join("A")
+			this.classList.add(this.uniqueClass.substr(1))
+		}
+
 		return URL.createObjectURL(
 			new Blob(
 				[
@@ -284,9 +315,9 @@ export default abstract class ComponentCore extends HTMLElement {
 										extra = sel[0].replace("(", "").replace(")", "")
 									}
 
-									return this.tagName + extra + "{\n"
+									return this.uniqueClass + extra + "{\n"
 								} else if (line.includes("{") && !line.includes("@") && !line.includes("from {") && !line.includes("from{") && !line.includes("to {") && !line.includes("to{")) {
-									return this.tagName + " " + line.split(",").join(", " + this.tagName) + "\n"
+									return this.uniqueClass + " " + line.split(",").join(", " + this.uniqueClass) + "\n"
 								} else {
 									return line + "\n"
 								}
@@ -310,9 +341,13 @@ export default abstract class ComponentCore extends HTMLElement {
 		// Set the [component] attribute on this element
 		this.setAttribute("component", "")
 
-		// Hide this element
-		if (ComponentCore.hideBeforeCSS) {
+		// Set the tabIndex of the component to -1. This stops TAB and SHIFT+TAB inside of components from escaping.
+		this.tabIndex = -1
+
+		if (this.loadBehavior === "hideBeforeReady") {
 			this.style.display = "none"
+		} else if (this.loadBehavior === "useLoadAttribute") {
+			this.setAttribute("load", "")
 		}
 
 		// If the CSS is isolated, add blob tags defining the CSS
@@ -333,31 +368,47 @@ export default abstract class ComponentCore extends HTMLElement {
 				const $link = document.createElement("link")
 				$link.setAttribute("common-css", "")
 				$link.rel = "stylesheet"
-				$link.href = this.parseCSS(ComponentCore.commonCSSSource[i])
+				$link.href = this.componentCSStoIsolatedCSS(ComponentCore.commonCSSSource[i])
 				this.$root.appendChild($link)
 			}
 		}
 
-		let total = 1
+		let total = 1 // (1 is always in total due to self-load, others are added via stylesheet)
 		let loaded = 0
-		if (ComponentCore.hideBeforeCSS) {
+		if (this.loadBehavior) {
 			this.$$("link[rel='stylesheet']").forEach(($link) => {
 				total++
 				$link.onload = () => {
 					loaded++
 					if (total === loaded) {
-						this.style.display = ""
+						if (this.loadBehavior === "hideBeforeReady") {
+							this.style.display = ""
+						} else if (this.loadBehavior === "useLoadAttribute") {
+							this.removeAttribute("load")
+						}
 					}
 				}
 			})
-			if (!total) this.style.display = ""
+
+			if (!total) {
+				if (this.loadBehavior === "hideBeforeReady") {
+					this.style.display = ""
+				} else if (this.loadBehavior === "useLoadAttribute") {
+					this.removeAttribute("load")
+				}
+			}
 		}
 
 		// Run the setup function
 		await this.setup()
-		loaded++
+
+		loaded++ // (1 is always in total due to self-load, others are added via stylesheet)
 		if (total === loaded) {
-			this.style.display = ""
+			if (this.loadBehavior === "hideBeforeReady") {
+				this.style.display = ""
+			} else if (this.loadBehavior === "useLoadAttribute") {
+				this.removeAttribute("load")
+			}
 		}
 
 		this.connectedCallbackFinished = true
