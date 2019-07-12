@@ -675,6 +675,14 @@ export default class Application {
 		// Connect to the body of this window
 		document.body.appendChild(this.$root)
 
+		// Start the root activity
+		const rootActivity: any = this.registeredActivities["/"]
+		if (rootActivity) {
+			this.startActivity(this.registeredActivities["/"], false)
+		} else {
+			throw new Error("Please define an activity class at root ('/') -- read the docs")
+		}
+
 		// Register hooks
 		window.addEventListener("popstate", () => {
 			this.routeChanged(true)
