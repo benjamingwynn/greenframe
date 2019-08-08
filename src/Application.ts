@@ -190,8 +190,6 @@ export default class Application {
 		if (this.appSetup) this.appSetup(newState)
 	}
 
-	private readonly rootRoute = ""
-
 	constructor(public readonly applicationName, private defaultState = "default", private appSetup?: (state: string) => void) {
 		this.constructTime = performance.now()
 
@@ -225,66 +223,73 @@ export default class Application {
 		return window.matchMedia("(display-mode: standalone)").matches
 	}
 
-	private lastRoute: string = ""
+	/** The currently active route. */
+	private currentRoute: string = ""
 
 	/** Returns whether the specified activity is currently active */
 	public isActivityActive(test: Activity) {
 		return test.tagName.toLowerCase() === this.registeredActivities[this.getCurrentActivityAsRoute()]
 	}
 
+	/** Whether the user has navigated since the page has loaded. */
+	private navigated: boolean = false
+
 	/** Handles the change of the current route. */
-	private async routeChanged(animate: boolean) {
-		const thisRoute = this.getCurrentActivityAsRoute()
-		if (this.lastRoute === thisRoute) return
+	private routeChanged(initial: boolean) {
+		if (!initial) this.navigated = true
+		const route = this.getCurrentActivityAsRoute()
 
-		this.lastRoute = thisRoute
-
-		console.debug("Route changed:", thisRoute)
-
-		const switchTo = async (activity: Activity) => {
-			if (typeof activity.fixedComponentVisibility === "boolean") {
-				if (activity.fixedComponentVisibility === true) {
-					this.showFixedComponents()
-				} else {
-					this.hideFixedComponents()
-				}
+		if (this.currentRoute === route) {
+			const current = this.getCurrentActivity()
+			if (current.refresh) {
+				current.refresh()
 			}
-
-			activity.switchedTo(this.getPageArguments())
-
-			if (activity.activityTitle) {
-				this.$title.innerText = this.buildTitle()
-			} else {
-				if (this.$title.innerText !== this.applicationName) {
-					this.$title.innerText = this.applicationName
-				}
-			}
-
-			if (!activity.isActivity) {
-				console.error(activity)
-				throw new Error("switchTo() fired with an activity which isn't of type Activity. This is probably due to a fault in your activity, check the log for other errors.")
-			}
+			return
 		}
+
+		this.currentRoute = route
+
+		console.debug("Route changed to:", route)
 
 		// Try to start the activity in the route
-		const keys = Object.keys(this.registeredActivities)
-		for (let i = 0; i < keys.length; i++) {
-			const targetRoute = keys[i]
+		const activityTagName = this.registeredActivities[route]
 
-			if (thisRoute === targetRoute) {
-				const $a = this.startActivity(this.registeredActivities[thisRoute], !animate)
-				$a.removeAttribute("target-not-found")
-				await switchTo($a)
-				return
+		if (!activityTagName) {
+			if (this.notFoundActivityRegistered) {
+				this.startActivity(Application.NotFoundActivityTagName, !!initial)
+			} else {
+				// TODO: Define a handler for 404's
+				throw new Error("No activity exists at this route, and there is no handler for 404's.")
 			}
 		}
 
-		if (this.notFoundActivityRegistered) {
-			this.startActivity(Application.NotFoundActivityTagName, !animate)
-		} else {
-			// TODO: Define a handler for 404's
-			throw new Error("No activity exists at this route, and there is no handler for 404's.")
+		const activity = this.startActivity(activityTagName, !!initial)
+
+		// Show/hide fixed components
+		if (typeof activity.fixedComponentVisibility === "boolean") {
+			if (activity.fixedComponentVisibility === true) {
+				this.showFixedComponents()
+			} else {
+				this.hideFixedComponents()
+			}
 		}
+
+		activity.switchedTo(this.getPageArguments())
+
+		if (activity.activityTitle) {
+			this.$title.innerText = `${activity.activityTitle} — ${this.applicationName}`
+		} else {
+			if (this.$title.innerText !== this.applicationName) {
+				this.$title.innerText = this.applicationName
+			}
+		}
+
+		if (!activity.isActivity) {
+			console.error(activity)
+			throw new Error("routeChanged() fired with an activity which isn't of type Activity. This is probably due to a fault in your activity, check the log for other errors.")
+		}
+
+		return
 	}
 
 	private static ErrorActivityTagName = "activity-error"
@@ -296,7 +301,7 @@ export default class Application {
 
 		// this.errorActivityClass = activity
 
-		this.registerComponent(activityClass, true, Application.ErrorActivityTagName)
+		this.registerComponent(activityClass, Application.ErrorActivityTagName)
 
 		let firedErrorActivity: boolean = false
 
@@ -308,12 +313,8 @@ export default class Application {
 
 			firedErrorActivity = true
 
-			console.warn("...1")
-
-			//@ts-ignore
+			// @ts-ignore
 			const activity: any = new activityClass(ex)
-
-			console.warn("...2")
 
 			if (activity instanceof ErrorActivity) {
 				this.$root.connect(activity)
@@ -349,7 +350,7 @@ export default class Application {
 		this.notFoundActivityRegistered = true
 
 		// Register the component
-		this.registerComponent(activity, true, Application.NotFoundActivityTagName)
+		this.registerComponent(activity, Application.NotFoundActivityTagName)
 	}
 
 	/** Sets a CSS variable on the root of the Application */
@@ -359,16 +360,7 @@ export default class Application {
 
 	/** Returns the current activity as the route it's registered under. */
 	public getCurrentActivityAsRoute(): string {
-		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
-
-		return (
-			"/" +
-			this.rootRoute +
-			location.pathname
-				.substr(1)
-				.split("/")
-				[this.rootRoute.split("/").length - 1].trim()
-		)
+		return location.pathname
 	}
 
 	/** Array of all the fixed components in this application. */
@@ -489,15 +481,11 @@ export default class Application {
 	}
 
 	/** Register a component to the Application. The component is automatically created based on it's class name unless `forceName` is defined.. */
-	private registerComponent(component: Function, dieIfRegistered: boolean = false, forceName?: string): void {
-		const elementName = forceName || "component-" + toKebabCase(component.name)
+	private registerComponent(component: Function, forceName?: string): void {
+		// the find function below removes underscores (_) because in production classes are given _'s in their names based on their file location
+		const elementName = forceName || "component-" + toKebabCase(component.name.split("_").find((v, i, a) => i === a.length - 1) || component.name)
 		if (customElements.get(elementName)) {
-			const message = elementName + " is already defined in the custom elements registry."
-			if (dieIfRegistered) {
-				throw new Error(message)
-			} else {
-				console.warn(message)
-			}
+			throw new Error(elementName + " is already defined in the custom elements registry.")
 		} else {
 			customElements.define(elementName, component)
 			console.log("Registered new component:", component.name, "→", elementName, process.env.NODE_ENV == "production" ? "(I am running in production mode, so my component names are not as verbose, switch to development mode for component names to reflect class names)" : "")
@@ -523,7 +511,7 @@ export default class Application {
 	}
 
 	/** Returns the currently active activity */
-	private getCurrentActivity(): Activity {
+	public getCurrentActivity(): Activity {
 		const $$a = this.getLoadedActivities()
 		return $$a[$$a.length - 1]
 	}
@@ -553,7 +541,7 @@ export default class Application {
 		const hash = location.hash.split("?")[0].substr(1)
 		if (hash === this.lastHash) return
 		this.lastHash = hash
-		console.log("--hash change --")
+		// console.log("--hash change --", hash)
 
 		// delete existing modals
 		Array.from(this.$modalContainer.children).forEach(($e) => {
@@ -568,7 +556,7 @@ export default class Application {
 				})
 			})
 
-			util.sleepFrames(1).then(() => {
+			util.sleepFrames(2).then(() => {
 				if (!aniStarted) {
 					console.warn("No animation declared for destroying this component. Declare :host([destroyed]) { /* ... */ } in your components CSS to add an animation when this component is destroyed. [" + $e.tagName + "]")
 					$e.remove()
@@ -656,7 +644,7 @@ export default class Application {
 	public back() {
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
-		if (history.state) {
+		if (this.navigated) {
 			history.back()
 		} else {
 			// Switch to the default activity if we didn't get here via a previous activity
@@ -699,13 +687,8 @@ export default class Application {
 				extra += `${n === 0 ? "?" : "&"}${key}=${data[key]}`
 			})
 		}
-		history[replaceState ? "replaceState" : "pushState"]({}, this.buildTitle(), location.origin + "/" + this.rootRoute + routeNameStripped + extra)
-		this.routeChanged(true)
-	}
-
-	/** Builds a title string for use in activity switching */
-	private buildTitle(): string {
-		return `${this.getCurrentActivity().activityTitle} | ${this.applicationName}`
+		history[replaceState ? "replaceState" : "pushState"]({}, "", location.origin + "/" + routeNameStripped + extra)
+		this.routeChanged(false)
 	}
 
 	private static GenerateActivityName(route: string): string {
@@ -722,23 +705,21 @@ export default class Application {
 	private registerActivity(route: string, activity: Function): string {
 		if (route[0] !== "/") throw new Error("Missing / from route.")
 
-		const fullRoute = this.rootRoute + route
-
 		if (!activity.prototype.switchedTo) {
 			throw new Error("Cannot register this activity as it's not a valid activity class. Ensure it inherits from the `Activity` class, and that it contains the required `switchedTo` method.")
 		}
 
-		if (this.registeredActivities[fullRoute]) {
+		if (this.registeredActivities[route]) {
 			throw new Error("Route `" + route + "` already registered.")
 		}
 
 		const elementName = Application.GenerateActivityName(route)
 
 		// Register the component
-		this.registerComponent(activity, false, elementName)
+		this.registerComponent(activity, elementName)
 
 		// Define as an activity
-		this.registeredActivities[fullRoute] = elementName
+		this.registeredActivities[route] = elementName
 
 		return route
 	}
@@ -781,24 +762,24 @@ export default class Application {
 		document.body.appendChild(this.$root)
 
 		// Start the root activity
-		const rootActivity: any = this.registeredActivities["/"]
+		const rootActivity = this.registeredActivities["/"]
 		if (rootActivity) {
-			this.startActivity(this.registeredActivities["/"], false)
+			this.startActivity(this.registeredActivities["/"], true)
 		} else {
 			throw new Error("Please define an activity class at root ('/') -- read the docs")
 		}
 
 		// Register hooks
 		window.addEventListener("popstate", () => {
-			this.routeChanged(true)
-			this.hashChange()
+			this.routeChanged(false)
 		})
 
 		window.addEventListener("hashchange", () => {
 			this.hashChange()
 		})
 
-		this.routeChanged(false)
+		this.routeChanged(true)
+		this.hashChange()
 
 		const t = performance.now() - this.constructTime
 		if (this.appSetup) this.appSetup(this.currentAppState)

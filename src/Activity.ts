@@ -11,17 +11,17 @@ abstract class Activity extends Component {
 	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent | null} = {}
 
 	/** Registers a hash function on this modal. */
-	public hookModal(hash: string, callback: (properties: {[key: string]: string}) => ModalComponent | null) {
+	public hookModal(name: string, callback: (properties: {[key: string]: string}) => ModalComponent | null) {
 		// Register
-		this.registeredModalHooks[hash] = callback
+		this.registeredModalHooks[name] = callback
 		// Detect a hash change
 		this.app.hashChange()
 	}
 
 	/** Starts a modal via the modals hash name and with the properties provided. */
-	public startModal(hash: string, properties: {[key: string]: any} = {}) {
-		if (!this.registeredModalHooks[hash]) {
-			throw new Error("No modal is declared under the hash #" + hash)
+	public startModal(name: string, properties: {[key: string]: any} = {}) {
+		if (!this.registeredModalHooks[name]) {
+			throw new Error("No modal is declared under the hash #" + name)
 		}
 
 		let extra = ""
@@ -30,7 +30,10 @@ abstract class Activity extends Component {
 			extra += `${n === 0 ? "?" : "&"}${key}=${JSON.stringify(properties[key])}`
 		})
 
-		location.hash = "#" + hash + extra
+		// location.hash = "#" + name + extra
+		history.pushState({}, "", location.href.split("#")[0] + "#" + name + extra)
+
+		this.app.hashChange()
 	}
 
 	/** The title of this activity. */

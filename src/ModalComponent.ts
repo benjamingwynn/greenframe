@@ -6,9 +6,27 @@ export default abstract class ModalComponent extends Component {
 
 	public removeModal() {
 		if (this.type === "hash") {
-			location.hash = ""
+			// if we have history, go back
+			if (history.state) {
+				history.back()
+			} else {
+				location.hash = ""
+			}
 		} else if (this.type === "attached") {
-			this.remove()
+			this.setAttribute("destroyed", "")
+			this.addEventListener("animationend", () => {
+				this.remove()
+			})
 		}
+	}
+
+	async connectedCallback() {
+		await super.connectedCallback()
+
+		this.addEventListener("click", (ev) => {
+			if (ev.composedPath()[0] === this) {
+				this.removeModal()
+			}
+		})
 	}
 }
