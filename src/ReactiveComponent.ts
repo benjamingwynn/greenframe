@@ -20,7 +20,7 @@ customElements.define("dummy-component", DummyComponent)
 /** Reactive components react to any properties that are adjusted on their class. */
 export default abstract class ReactiveComponent extends FrameComponent {
 	static LogReactions = false
-	static LogSetup = true
+	static LogSetup = false
 
 	private log(msg: string) {
 		console.log(`⚛️ ${this.getClassName()} ℹ️`, msg)
