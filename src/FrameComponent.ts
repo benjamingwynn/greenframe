@@ -12,6 +12,10 @@ export default abstract class FrameComponent extends Component {
 		this.frameCalls.push(call)
 	}
 
+	public unregisterAllFrameCalls() {
+		this.frameCalls.splice(0, this.frameCalls.length)
+	}
+
 	public unregisterFrameCall(call: FrameCall) {
 		for (let i = 0; i < this.frameCalls.length; i++) {
 			if (this.frameCalls[i] === call) {
@@ -48,7 +52,7 @@ export default abstract class FrameComponent extends Component {
 	}
 
 	disconnectedCallback() {
-		console.log(`${this.getClassName()} is disconnecting. Attempting to remove it's frame calls to preserve performance.`)
+		console.log(`${this.getClassName()} is disconnecting. Removing it's frame calls to preserve performance.`)
 
 		// Enable kill switch to cut the `FrameRequestCallback` loop
 		this.killSwitch = true
