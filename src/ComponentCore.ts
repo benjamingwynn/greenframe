@@ -342,6 +342,8 @@ export default abstract class ComponentCore extends HTMLElement {
 		)
 	}
 
+	static RemapRootToDocumentFragmentDuringConnectedCallback: boolean = false
+
 	public async connectedCallback(): Promise<void> {
 		if (this.connectedCallbackRan) {
 			console.warn(this, "connected callback already ran.")
@@ -351,8 +353,14 @@ export default abstract class ComponentCore extends HTMLElement {
 		// Only ever run this function once
 		this.connectedCallbackRan = true
 
-		// Set the [component] attribute on this element
+		// Mark this with the `component` attribute so we can use querySelector to find components.
 		this.setAttribute("component", "")
+
+		// Re-map the $root to a document fragment to improve performance
+		let realRoot = this.$root
+		if (ComponentCore.RemapRootToDocumentFragmentDuringConnectedCallback) {
+			this.$root = document.createDocumentFragment()
+		}
 
 		// Set the tabIndex of the component to -1. This stops TAB and SHIFT+TAB inside of components from escaping.
 		this.tabIndex = -1
@@ -437,6 +445,12 @@ export default abstract class ComponentCore extends HTMLElement {
 			} else if (this.loadBehavior === "useLoadAttribute") {
 				this.removeAttribute("load")
 			}
+		}
+
+		// append the document fragment we created an re-map the real root
+		if (ComponentCore.RemapRootToDocumentFragmentDuringConnectedCallback) {
+			realRoot.appendChild(this.$root)
+			this.$root = realRoot
 		}
 
 		this.connectedCallbackFinished = true
