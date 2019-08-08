@@ -8,30 +8,7 @@ import {ModalComponent, ErrorActivity, util} from "./index"
 /** The colour scheme for the component. This is a simple way to set CSS variables for different schemes. Greenframe will automatically decide what's best for the user. */
 export type ColorSchemaName = "dark" | "light" | "highContrast"
 
-export type ColorSchema = {
-	text?: string
-	applicationBackground?: string
-	buttonBackground?: string
-	buttonForeground?: string
-	titleBarBackground?: string
-	titleBarForeground?: string
-	active?: string
-	focus?: string
-	danger?: string
-	iconFill?: string
-	toggleBackground?: string
-	toggleDotOff?: string
-	toggleDotOn?: string
-	toggleDotLoader?: string
-	loader?: string
-	titleBarIcon?: string
-	formBackground?: string
-	inputBackground?: string
-	inputBorderBlur?: string
-	inputInvalid?: string
-	formNext?: string
-	//[customProperty: string]: string
-}
+export type ColorSchema = {[customProperty: string]: string}
 
 /** An exception that is thrown when a color scheme the app tries to switch to does not exist. */
 class ColorSchemaDoesNotExistError extends Error {}
@@ -121,11 +98,12 @@ export default class Application {
 	public icons: {[iconName: string]: () => SVGElement} = {}
 
 	/** Returns the CSS variable for the current ColorSchema if we currently have a variable declared, if we don't then this function returns a default. */
-	public getSchemaProperty(prop: keyof ColorSchema): string {
+	public getSchemaProperty(prop: string): string {
 		const cs = this.registeredColorSchemas[this.currentColorScheme]
 		if (cs && cs[prop]) {
 			return "var(--schema-" + toKebabCase(prop) + ")"
 		} else {
+			console.warn(prop, "is not registered in the color scheme:", this.currentColorScheme)
 			return `hotpink /* add ${prop} to your ${this.currentColorScheme} ColorSchema to override this */`
 		}
 	}
