@@ -1,6 +1,7 @@
 /** @format */
 
 import Activity from "./Activity"
+import Layout from "./Layout"
 
 /** @format */
 
@@ -13,6 +14,16 @@ export type ComponentLoadBehavior = "hideBeforeReady" | "useLoadAttribute" | fal
 export default abstract class ComponentCore extends HTMLElement {
 	private static commonCSSBlobs: string[] = []
 	private static commonCSSSource: string[] = []
+	private static CachedLayouts: {[tag: string]: DocumentFragment} = {}
+
+	/**
+	 * The layout of the component.
+	 *
+	 * Where possible you should use this on your Components, it allows Greenframe to cache the layout of the component prior to `setup()`, if your CSS is unchanging, put it here.
+	 *
+	 * **This is a work in progress and may change at any time.**
+	 */
+	layout: ((root: Layout) => void) | undefined
 
 	/** Setup for the component, such as adding events, etc. This should be here, and not in the constructor. */
 	abstract setup(): void | Promise<void>
@@ -38,7 +49,7 @@ export default abstract class ComponentCore extends HTMLElement {
 	private static forceCSSMethod: boolean | undefined = undefined
 
 	/** Represents the root of the component where other Elements should be appended to and modified. Internally, this is either the component itself or a shadow root, depending on the components isolation setting. */
-	public $root: ComponentCore | ShadowRoot | HTMLElement
+	public $root: ComponentCore | ShadowRoot | HTMLElement | DocumentFragment
 
 	/** Construct with initialHTML and initialCSS. This is the HTML and CSS the element will be constructed with, along with the common stuff. */
 	constructor(private isolate: boolean = true) {
@@ -101,7 +112,8 @@ export default abstract class ComponentCore extends HTMLElement {
 		this.$root.appendChild($link)
 	}
 
-	public static ParseShorthandElement(tagName: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p", args: string[]): HTMLElement {
+	/** @deprecated */
+	private static ParseShorthandElement(tagName: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p", args: string[]): HTMLElement {
 		let props: string = ""
 		let inner: string = ""
 
@@ -131,12 +143,12 @@ export default abstract class ComponentCore extends HTMLElement {
 		return $element
 	}
 
-	/** Quickly add a paragraph to the component. */
+	/** @deprecated Quickly add a paragraph to the component. */
 	public p(a: string, b?: string) {
 		this.connect(ComponentCore.ParseShorthandElement("p", Array.from(arguments)))
 	}
 
-	/** Quickly add a heading to the component. */
+	/** @deprecated Quickly add a heading to the component. */
 	public h(a: string, b?: string) {
 		let n = 1
 		let e = this.$root.lastElementChild
@@ -156,8 +168,8 @@ export default abstract class ComponentCore extends HTMLElement {
 	/**
 	 * Adds an element to the component.
 	 **/
-	public connect($element: HTMLElement | HTMLElement[], parent: string | HTMLElement | ShadowRoot = this.$root): void {
-		let p: HTMLElement | ShadowRoot
+	public connect($element: HTMLElement | HTMLElement[], parent: string | HTMLElement | ShadowRoot | DocumentFragment = this.$root): void {
+		let p: HTMLElement | ShadowRoot | DocumentFragment
 
 		if (typeof parent === "string") {
 			p = this.$(parent)
@@ -173,7 +185,7 @@ export default abstract class ComponentCore extends HTMLElement {
 	}
 
 	/** Find a single element and return it. Errors if the element does not exist. To find an element that may exist, use `$_` */
-	public $(query: string, $root: HTMLElement | ShadowRoot = this.$root): HTMLElement {
+	public $(query: string, $root: HTMLElement | ShadowRoot | DocumentFragment = this.$root): HTMLElement {
 		if (!$root) throw new Error("Missing root for the query.")
 
 		const $e = $root.querySelector(query)
@@ -186,14 +198,14 @@ export default abstract class ComponentCore extends HTMLElement {
 	}
 
 	/** Short-hand for selecting `Component` items from the current parent `Component`. Throws fatal error if the component doesn't exist or if the component is a standard HTMLElement. */
-	public $c(query: string, $root: HTMLElement | ShadowRoot = this.$root): ComponentCore {
+	public $c(query: string, $root: HTMLElement | ShadowRoot | DocumentFragment = this.$root): ComponentCore {
 		const $r = this.$(query, $root)
 		if ($r instanceof ComponentCore) return $r
 		throw new Error(`Selector on CustomElement failed for selectorQuery as the query is not a valid Component: ${query}`)
 	}
 
 	/** Find multiple elements as an array. If no elements exist, returns an empty array. */
-	public $$(query: string, loop?: ($e: HTMLElement, index: number) => void, $root: HTMLElement | ShadowRoot = this.$root): HTMLElement[] {
+	public $$(query: string, loop?: ($e: HTMLElement, index: number) => void, $root: HTMLElement | ShadowRoot | DocumentFragment = this.$root): HTMLElement[] {
 		if (!$root) throw new Error("Missing root for document query.")
 		const $$e = $root.querySelectorAll(query)
 		const $$r: HTMLElement[] = []
@@ -223,8 +235,9 @@ export default abstract class ComponentCore extends HTMLElement {
 
 	/** Returns the element, or returns null if the element doesn't exist. */
 	public $_(query: string, $root?: HTMLElement | ShadowRoot): HTMLElement | null {
-		if (this.$has(query, $root)) {
-			return this.$(query, $root)
+		const $e = this.$$(query)[0]
+		if ($e) {
+			return $e
 		} else {
 			return null
 		}
@@ -397,6 +410,21 @@ export default abstract class ComponentCore extends HTMLElement {
 					this.removeAttribute("load")
 				}
 			}
+		}
+
+		if (this.layout) {
+			// create the layout
+			let frag: DocumentFragment
+			if (ComponentCore.CachedLayouts[this.tagName]) {
+				frag = ComponentCore.CachedLayouts[this.tagName]
+				console.debug("Loaded existing cached layout for", this.tagName)
+			} else {
+				const layout = new Layout()
+				this.layout(layout)
+				frag = ComponentCore.CachedLayouts[this.tagName] = layout.$root
+				console.debug("Generated new layout from fragment:", frag)
+			}
+			this.$root.appendChild(frag.cloneNode(true))
 		}
 
 		// Run the setup function
