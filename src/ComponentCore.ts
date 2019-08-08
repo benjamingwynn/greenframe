@@ -2,6 +2,7 @@
 
 import Activity from "./Activity"
 import Layout from "./Layout"
+import {ModalComponent} from "./index"
 
 /** @format */
 
@@ -243,6 +244,30 @@ export default abstract class ComponentCore extends HTMLElement {
 		}
 	}
 
+	/** Searches through components, regardless of ShadowDOM isolation for an element. */
+	public $deep(query: string): HTMLElement | null {
+		// If this isn't deep, use standard $
+		if (!this.isolate) {
+			return this.$_(query)
+		}
+
+		const x = this.$_(query)
+		if (x) return x
+
+		const childComponents = this.$$("[component]")
+		for (let i = 0; i < childComponents.length; i++) {
+			const element = childComponents[i]
+			if (element instanceof ComponentCore) {
+				const r = element.$deep(query)
+				if (r) return r
+			} else {
+				console.warn("A non-component is marked with the component attribute, it shouldn't be.")
+			}
+		}
+
+		return null
+	}
+
 	/** Connect this component to another component, or a HTML element. */
 	public connectTo($to: HTMLElement | ComponentCore) {
 		if ($to instanceof ComponentCore) {
@@ -252,7 +277,7 @@ export default abstract class ComponentCore extends HTMLElement {
 		}
 	}
 
-	/** Connect this component, and wait for it to finish loading before resolving a promise. */
+	/** Connect this component, and wait for it to finish it's setup function before resolving a promise. */
 	public connectToAndWait($to: HTMLElement | ComponentCore): Promise<void> {
 		return new Promise((resolve) => {
 			this.connectTo($to)
@@ -271,15 +296,25 @@ export default abstract class ComponentCore extends HTMLElement {
 
 	/** Gets the activity the component is attached to. */
 	public getActivity(): Activity | null {
-		if (this._parentActivity) return this._parentActivity
-		let p: any = this
-		while (p.host || p.parentNode) {
-			p = p.host || p.parentNode
-			if (p instanceof Activity) {
-				return (this._parentActivity = p)
+		if (this instanceof ModalComponent) {
+			return this.app.getCurrentActivity()
+		} else {
+			if (this._parentActivity) return this._parentActivity
+			let p: any = this
+			while (p.host || p.parentNode) {
+				p = p.host || p.parentNode
+				if (p instanceof Activity) {
+					return (this._parentActivity = p)
+				}
 			}
+			return null
 		}
-		return null
+	}
+
+	public getActivityOrFail(): Activity {
+		const a = this.getActivity()
+		if (!a) throw new Error("Could not get activity of component.")
+		return a
 	}
 
 	protected connectedCallbackRan = false
