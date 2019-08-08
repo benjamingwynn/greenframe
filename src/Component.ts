@@ -86,4 +86,12 @@ Component.addCommonCSS(`
 	[hidden] {
 		display: none;
 	}
+
+	button > * {
+		cursor: inherit;
+	}
+
+	a {
+		color: inherit;
+	}
 `)
