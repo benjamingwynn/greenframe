@@ -147,7 +147,7 @@ export default class Application {
 		const $style = document.createElement("style")
 		$style.setAttribute("color-schema", name)
 
-		$style.innerHTML = "component-" + toKebabCase(ApplicationRoot.name) + " {"
+		$style.innerHTML = this.$root.tagName + " {"
 		for (let item in schema) {
 			$style.innerHTML += "--schema-" + toKebabCase(item) + ": " + schema[item] + ";" + "\n"
 		}
