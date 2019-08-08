@@ -724,9 +724,14 @@ export default class Application {
 		return route
 	}
 
-	/** Refreshes the current activity by firing `switchedTo` again. */
+	/** Refreshes the current activity by firing `switchedTo` again or firing `refresh` if it exists. */
 	public refreshCurrentActivity(): void {
-		this.getCurrentActivity().switchedTo(this.getPageArguments())
+		const current = this.getCurrentActivity()
+		if (current.refresh) {
+			current.refresh()
+		} else {
+			current.switchedTo(this.getPageArguments())
+		}
 	}
 
 	/** Whether the application has been started with `.start()` */

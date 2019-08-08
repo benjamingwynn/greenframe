@@ -106,6 +106,9 @@ abstract class Activity extends Component {
 			this.remove()
 		})
 	}
+
+	/** Fires if the application requests to switch to the same activity it's already switched to, also can be fired manually. */
+	public refresh?()
 }
 
 export default Activity
