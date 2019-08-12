@@ -1,7 +1,7 @@
 /** @format */
 
 /** Easily hooks dragging element around */
-const HookDrag = (
+export const HookDrag = (
 	$target: HTMLElement,
 	button: number | null,
 	hooks: {
@@ -48,7 +48,7 @@ const HookDrag = (
 	}
 }
 
-const BooleanToAttribute = ($target: HTMLElement, attributeName: string, bool: boolean): void => {
+export const BooleanToAttribute = ($target: HTMLElement, attributeName: string, bool: boolean): void => {
 	if (bool) {
 		$target.setAttribute(attributeName, "")
 	} else {
@@ -56,4 +56,47 @@ const BooleanToAttribute = ($target: HTMLElement, attributeName: string, bool: b
 	}
 }
 
-export {HookDrag, BooleanToAttribute}
+class LoadFailedError extends Error {}
+
+/**
+ * Waits for an element to finish loading, then resolves a promise. If the image is already loaded the promise will *immediately* resolve.
+ *
+ * If the image fails to load then the function will throw LoadFailedError.
+ * @throws LoadFailedError
+ */
+export const ForLoadOrFail = (element: HTMLImageElement): Promise<void> => {
+	return new Promise((resolve, reject) => {
+		if (element.complete) resolve()
+
+		element.addEventListener("error", (error) => {
+			reject(new LoadFailedError(error.message))
+		})
+
+		element.addEventListener("load", () => {
+			resolve()
+		})
+	})
+}
+
+/** Waits for an element to finish loading, then resolves a promise. If the image is already loaded the promise will *immediately* resolve.
+ *
+ * @returns whether the image loaded successfully or not.
+ */
+export const ForLoad = (element: HTMLImageElement): Promise<boolean> => {
+	return new Promise((resolve) => {
+		ForLoadOrFail(element)
+			.then(() => resolve(true))
+			.catch(() => resolve(false))
+	})
+}
+
+export const DirectClick = (element: Element, callback: () => void): void => {
+	element.addEventListener("click", (ev) => {
+		if (ev.composedPath()[0] === element) {
+			ev.stopPropagation()
+			callback()
+		}
+	})
+}
+
+// export {HookDrag, BooleanToAttribute, ForLoad as Load, ForLoadOrFail as LoadOrFail}
