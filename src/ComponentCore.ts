@@ -3,6 +3,7 @@
 import Activity from "./Activity"
 import Layout from "./Layout"
 import {ModalComponent} from "./index"
+import {sleep} from "./util"
 
 /** @format */
 
@@ -93,24 +94,29 @@ export default abstract class ComponentCore extends HTMLElement {
 	}
 
 	/** Adds a stylesheet to the component. */
-	public css(css: string) {
-		if (css.includes(":host>") || css.includes(":host >")) {
-			console.warn(this.getClassName(), "This component contains a `:host >` CSS selector. This is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
-		}
+	public css(css: string): Promise<void> {
+		return new Promise((resolve) => {
+			if (css.includes(":host>") || css.includes(":host >")) {
+				console.warn(this.getClassName(), "This component contains a `:host >` CSS selector. This is not fully supported by all browsers in 2019, namely Safari 12.1. Content may appear bugged on that platform. See: https://caniuse.com/#feat=shadowdomv1")
+			}
 
-		// Remove "//" comments from CSS
-		// TODO: performance assessment
-		css = css
-			.split("\n")
-			.filter((line) => line.trim().indexOf("//") !== 0)
-			.join("\n")
+			// Remove "//" comments from CSS
+			// TODO: performance assessment
+			css = css
+				.split("\n")
+				.filter((line) => line.trim().indexOf("//") !== 0)
+				.join("\n")
 
-		const $link = document.createElement("link")
-		$link.href = this.isolate ? URL.createObjectURL(new Blob([css], {type: "text/css"})) : this.componentCSStoIsolatedCSS(css)
-		$link.setAttribute("element-css", "")
-		$link.rel = "stylesheet"
+			const $link = document.createElement("link")
+			$link.href = this.isolate ? URL.createObjectURL(new Blob([css], {type: "text/css"})) : this.componentCSStoIsolatedCSS(css)
+			$link.addEventListener("load", () => {
+				resolve()
+			})
+			$link.setAttribute("element-css", "")
+			$link.rel = "stylesheet"
 
-		this.$root.appendChild($link)
+			this.$root.appendChild($link)
+		})
 	}
 
 	/** @deprecated */
@@ -429,6 +435,21 @@ export default abstract class ComponentCore extends HTMLElement {
 			}
 		}
 
+		if (this.layout) {
+			// create the layout
+			let frag: DocumentFragment
+			if (ComponentCore.CachedLayouts[this.tagName]) {
+				frag = ComponentCore.CachedLayouts[this.tagName]
+				console.debug("Loaded existing cached layout for", this.tagName)
+			} else {
+				const layout = new Layout()
+				this.layout(layout)
+				frag = ComponentCore.CachedLayouts[this.tagName] = layout.$root
+				console.debug("Generated new layout from fragment:", frag)
+			}
+			this.$root.appendChild(frag.cloneNode(true))
+		}
+
 		let total = 1 // (1 is always in total due to self-load, others are added via stylesheet)
 		let loaded = 0
 		if (this.loadBehavior) {
@@ -453,21 +474,6 @@ export default abstract class ComponentCore extends HTMLElement {
 					this.removeAttribute("load")
 				}
 			}
-		}
-
-		if (this.layout) {
-			// create the layout
-			let frag: DocumentFragment
-			if (ComponentCore.CachedLayouts[this.tagName]) {
-				frag = ComponentCore.CachedLayouts[this.tagName]
-				console.debug("Loaded existing cached layout for", this.tagName)
-			} else {
-				const layout = new Layout()
-				this.layout(layout)
-				frag = ComponentCore.CachedLayouts[this.tagName] = layout.$root
-				console.debug("Generated new layout from fragment:", frag)
-			}
-			this.$root.appendChild(frag.cloneNode(true))
 		}
 
 		// Run the setup function
