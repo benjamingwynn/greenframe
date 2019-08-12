@@ -62,7 +62,7 @@ export default abstract class Component extends ComponentCore {
 /** Add default styling. */
 Component.addCommonCSS(`
 	:host {
-		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, system-ui, sans-serif;
+		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', "Segoe UI", Roboto, Helvetica, system-ui, sans-serif;
 		font-size: 1em;
 		cursor: default;
 		user-select: none;
