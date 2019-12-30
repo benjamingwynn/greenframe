@@ -2,12 +2,13 @@
 
 import Activity from "./Activity"
 import Layout from "./Layout"
-import {ModalComponent} from "./index"
-import {sleep} from "./util"
+import {ModalComponent, Component} from "./index"
 
 /** @format */
 
 export type ComponentLoadBehavior = "hideBeforeReady" | "useLoadAttribute" | false
+
+export class ComponentConnectionTimeoutError extends Error {}
 
 /**
  *  ComponentCore is a component that does not have an `app` property. It can run without an App. You should use `Component` though.
@@ -99,6 +100,7 @@ export default abstract class ComponentCore extends HTMLElement {
 			// TODO: performance assessment
 			css = css
 				.split("\n")
+				.map((line) => line.trim())
 				.filter((line) => line.trim().indexOf("//") !== 0)
 				.join("\n")
 
@@ -225,15 +227,28 @@ export default abstract class ComponentCore extends HTMLElement {
 		}
 	}
 
-	/** Connect this component, and wait for it to finish it's setup function before resolving a promise. */
-	public connectToAndWait($to: HTMLElement | ComponentCore): Promise<void> {
-		return new Promise((resolve) => {
+	/**
+	 * Connect this component and wait for it to finish it's setup function before resolving a promise.
+	 *
+	 * Optionally, a timeout may be provided. If the component does not connect in the time provided by the timeout then a ComponentConnectionTimeoutError will be thrown.
+	 *
+	 * Additionally, the `waitForVisible` argument can be used to wait until the element is `visible`
+	 */
+	public connectToAndWait($to: HTMLElement | ComponentCore, timeout?: number, waitForVisible?: true): Promise<void> {
+		const bailTime = timeout ? Date.now() + timeout : Infinity
+		return new Promise((resolve, reject) => {
 			this.connectTo($to)
 			const f = () => {
-				if (this.connectedCallbackFinished) {
-					resolve()
+				if (bailTime !== Infinity && Date.now() > bailTime) {
+					$to.remove()
+					console.warn($to.tagName, "didn't connect in time and was destroyed.")
+					reject(new ComponentConnectionTimeoutError())
 				} else {
-					requestAnimationFrame(f)
+					if (this.connectedCallbackFinished && (!waitForVisible || (waitForVisible && this instanceof Component && this.visible))) {
+						resolve()
+					} else {
+						requestAnimationFrame(f)
+					}
 				}
 			}
 			requestAnimationFrame(f)
