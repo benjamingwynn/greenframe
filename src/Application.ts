@@ -720,6 +720,40 @@ export default class Application {
 		}
 	}
 
+	/** Preload all resources under AssetLoader2.ResourcePreloadContainerTag */
+	private preloadResources(): Promise<void> {
+		return new Promise((resolve) => {
+			const p = document.body.querySelector(AssetLoader2.ResourcePreloadContainerTag)
+			if (!p) throw new Error(`Could not find "${AssetLoader2.ResourcePreloadContainerTag}" in the document body.`)
+			const check = () => {
+				const e = p.querySelector(`*[complete]`)
+				if (!e) {
+					resolve()
+				} else {
+					console.debug("Still waiting on", e)
+				}
+			}
+			for (let i = 0; i < p.children.length; i++) {
+				const c = p.children[i]
+				if (c instanceof HTMLImageElement) {
+					if (c.complete) {
+						c.setAttribute("ready", "")
+						// console.log("[LOADED/COMPLETE]", c.dataset.src)
+					}
+					c.addEventListener("load", () => {
+						// console.log("[LOADED/LOAD]", c.dataset.src)
+						c.setAttribute("ready", "")
+						check()
+					})
+				} else {
+					// svgs are...
+					c.setAttribute("ready", "") // ...ready by default
+				}
+				check()
+			}
+		})
+	}
+
 	/** Whether the application has been started with `.start()` */
 	private started: boolean = false
 
