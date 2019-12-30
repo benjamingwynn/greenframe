@@ -81,9 +81,7 @@ export default abstract class ComponentCore extends HTMLElement {
 		if (ComponentCore.HTMLInsertCount++ > 100) {
 			console.warn("🌳🏗⚠️ Heads up! You're creating a lot of elements with <Component>.html() - this will affect performance, consider using the DOM instead to add elements.")
 		}
-		// this.$root.innerHTML += html
-		const parser = new DOMParser()
-		const doc = parser.parseFromString(`<component-inner>${html}</component-inner>`, "text/html")
+		const doc = ComponentCore.DOMParser.parseFromString(`<component-inner>${html}</component-inner>`, "text/html")
 		const inner = doc.querySelectorAll("component-inner > *")
 		if (!inner.length) throw new Error("Could not select inner component from parsed HTML string.")
 		for (let i = 0; i < inner.length; i++) this.$root.appendChild(inner[i])
