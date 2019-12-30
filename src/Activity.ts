@@ -1,9 +1,34 @@
 /** @format */
 
 import Component from "./Component"
-import {ModalComponent} from "./index"
+import {ModalComponent, DOMUtil} from "./index"
 
 abstract class Activity extends Component {
+	private loadedScripts: {[url: string]: HTMLScriptElement} = {}
+
+	public loadScript(url, async: boolean = false, defer: boolean = false): Promise<void> {
+		return new Promise((resolve, reject) => {
+			if (this.loadedScripts[url]) {
+				console.log("Script", url, "is already loaded.")
+				resolve()
+			} else {
+				const $script = document.createElement("script")
+				$script.src = url
+				$script.async = async
+				$script.defer = defer
+				this.loadedScripts[url] = $script
+				$script.addEventListener("error", (ex) => {
+					reject(ex)
+				})
+				$script.addEventListener("load", () => {
+					console.warn("***** script", url, "loaded")
+					resolve()
+				})
+				this.connect(this.loadedScripts[url])
+			}
+		})
+	}
+
 	public $modalContainer = document.createElement("greenframe-activity-modal-container")
 
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
