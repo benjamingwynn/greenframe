@@ -99,4 +99,52 @@ export const DirectClick = (element: Element, callback: () => void): void => {
 	})
 }
 
+export const Hide = (element: Element): void => {
+	element.setAttribute("hidden", "")
+}
+
+export const Show = (element: Element): void => element.removeAttribute("hidden")
+
+
+/** Fires a **callback every time an animation finishes** on the element, unlike the alternative `WaitForAnimationFinish` which resolves a promise the first time an animation finishes on the element. If you don't want to target the element exactly, use the native `addEventListener("animationend", <callback>)` call. */
+export const AnimationFinish = (element: HTMLElement, callback: () => void) => {
+	const eventListener = (ev: AnimationEvent) => {
+		if (ev.target !== element) return // only target exactly
+		console.log("Animation finished on", element, ev)
+		callback()
+	}
+	element.addEventListener("animationend", eventListener)
+}
+
+/** Waits for an animation to complete before resolving, if a timeout is provided then the function will resolve after that time if the animation didn't complete. Note that due to the nature of Promises in Javascript only being able to resolve once, this can fire only once. If you wish to hook to an animation that is ran multiple times use `DOMUtil.AnimationFinish` */
+export const WaitForAnimationFinish = (element: HTMLElement, timeout?: number, exact: boolean = true) => {
+	return new Promise((resolve) => {
+		let bail = false // we shouldn't need this because we use removeEventListener, but keep it just in case
+		/** The timer for timing out the element animation. Cleared when animation complete. */
+		let timer
+
+		const removeEventListener = () => {
+			element.removeEventListener("animationend", eventListener)
+			bail = true
+		}
+
+		const eventListener = (ev: AnimationEvent) => {
+			if (exact && ev.target !== element) return // only target exactly
+			if (timer) clearTimeout(timer) // stop the timer firing
+			if (bail) return
+			removeEventListener()
+			resolve()
+		}
+
+		element.addEventListener("animationend", eventListener)
+
+		if (timeout) {
+			timer = setTimeout(() => {
+				removeEventListener()
+				resolve()
+			}, timeout)
+		}
+	})
+}
+
 // export {HookDrag, BooleanToAttribute, ForLoad as Load, ForLoadOrFail as LoadOrFail}
