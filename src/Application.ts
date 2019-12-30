@@ -243,15 +243,6 @@ export default class Application {
 
 		const activity = this.startActivity(activityTagName, !!initial)
 
-		// Show/hide fixed components
-		if (typeof activity.fixedComponentVisibility === "boolean") {
-			if (activity.fixedComponentVisibility === true) {
-				this.showFixedComponents()
-			} else {
-				this.hideFixedComponents()
-			}
-		}
-
 		activity.switchedTo(this.getPageArguments())
 
 		if (activity.activityTitle) {
