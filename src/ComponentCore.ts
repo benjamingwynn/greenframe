@@ -298,11 +298,15 @@ export default abstract class ComponentCore extends HTMLElement {
 		})
 	}
 
+	/** Back-reference to the parent activity of the current component. */
 	private _parentActivity?: Activity
 
 	/** Gets the activity the component is attached to. */
 	public getActivity(): Activity | null {
-		if (this instanceof ModalComponent) {
+		if (this instanceof Activity) {
+			console.warn("Activity instance requested getActivity(), just use `this` on it.")
+			return this
+		} else if (this instanceof ModalComponent) {
 			return this.app.getCurrentActivity()
 		} else {
 			if (this._parentActivity) return this._parentActivity
@@ -440,12 +444,12 @@ export default abstract class ComponentCore extends HTMLElement {
 			let frag: DocumentFragment
 			if (ComponentCore.CachedLayouts[this.tagName]) {
 				frag = ComponentCore.CachedLayouts[this.tagName]
-				console.debug("Loaded existing cached layout for", this.tagName)
+				// console.debug("Loaded existing cached layout for", this.tagName)
 			} else {
 				const layout = new Layout()
 				this.layout(layout)
 				frag = ComponentCore.CachedLayouts[this.tagName] = layout.$root
-				console.debug("Generated new layout from fragment:", frag)
+				// console.debug("Generated new layout from fragment:", frag)
 			}
 			this.$root.appendChild(frag.cloneNode(true))
 		}

@@ -4,20 +4,24 @@ import Component from "./Component"
 import {ModalComponent} from "./index"
 
 abstract class Activity extends Component {
+	public $modalContainer = document.createElement("greenframe-activity-modal-container")
 
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
 	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent | null} = {}
 
 	/** Registers a hash function on this modal. */
-	public hookModal(name: string, callback: (properties: {[key: string]: string}) => ModalComponent | null) {
-		// Register
+	public hookModal(name: string, callback: ((properties: {[key: string]: string}) => ModalComponent | null) | (() => ModalComponent | null)) {
+		// Register the new hash
 		this.registeredModalHooks[name] = callback
-		// Detect a hash change
-		this.app.hashChange()
+
+		// Force detect a hash change
+		// this.app.hashChange(true)
 	}
 
 	/** Starts a modal via the modals hash name and with the properties provided. */
 	public startModal(name: string, properties: {[key: string]: any} = {}) {
+		name = name.replace("#", "") // remove extra hashes
+
 		if (!this.registeredModalHooks[name]) {
 			throw new Error("No modal is declared under the hash #" + name)
 		}
@@ -29,13 +33,16 @@ abstract class Activity extends Component {
 		})
 
 		// location.hash = "#" + name + extra
-		history.pushState({}, "", location.href.split("#")[0] + "#" + name + extra)
+		history.pushState(undefined, this.app.$title.innerText, location.href.split("#")[0] + "#" + name + extra)
 
 		this.app.hashChange()
 	}
 
 	/** The title of this activity. */
 	public activityTitle?: string
+
+	/** If this is `true` then fixed components are shown automatically when the Activity is switched to. If it's `false` it hides fixed components. If it's `undefined` it does nothing. */
+	public automaticallyShowFixedComponents?: boolean
 
 	/** Fires when the activity is switched to. Unlike `setup`, this is fired every time the component is switched to. `setup` is only fired when the component is loaded. */
 	abstract switchedTo(args: {[key: string]: string}): void
@@ -53,9 +60,11 @@ abstract class Activity extends Component {
 	public readonly isActivity = true
 
 	public async connectedCallback() {
+		this.$root.appendChild(this.$modalContainer)
 		this.css(`
 			:host {
 				position: fixed;
+				z-index: 1;
 				width: 100%;
 
 				display: flex;
@@ -67,8 +76,23 @@ abstract class Activity extends Component {
 				left: var(--activity-left);
 				bottom: var(--activity-bottom);
 				right: var(--activity-right);
-				height: calc(100% - var(--activity-top) - var(--activity-bottom));
-				width: calc(100% - var(--activity-left) - var(--activity-right));
+				height: var(--activity-height);
+				width: var(--activity-width);
+			}
+
+			greenframe-activity-modal-container {
+				display: block;
+				z-index: 2;
+				position: fixed;
+				overflow: visible;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+			}
+
+			greenframe-activity-modal-container:empty {
+				display: none;
 			}
 
 			:host([animate]) {
@@ -100,7 +124,7 @@ abstract class Activity extends Component {
 
 	public destroy() {
 		this.setAttribute("destroyed", "")
-		this.addEventListener("animationend", () => {
+		DOMUtil.WaitForAnimationFinish(this, 600).then(() => {
 			this.remove()
 		})
 	}
