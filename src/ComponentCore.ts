@@ -47,9 +47,6 @@ export default abstract class ComponentCore extends HTMLElement {
 	 */
 	protected loadBehavior: ComponentLoadBehavior = "hideBeforeReady"
 
-	/** Defines whether to force elements to use `style` tags for their CSS, or whether to use blobs. True to force blobs, false to force `style` tags. Leaving `undefined` forces neither option and will automatically decide whether it's appropriate. */
-	private static forceCSSMethod: boolean | undefined = undefined
-
 	/** Represents the root of the component where other Elements should be appended to and modified. Internally, this is either the component itself or a shadow root, depending on the components isolation setting. */
 	public $root: ComponentCore | ShadowRoot | HTMLElement | DocumentFragment
 
@@ -115,59 +112,6 @@ export default abstract class ComponentCore extends HTMLElement {
 
 			this.$root.appendChild($link)
 		})
-	}
-
-	/** @deprecated */
-	private static ParseShorthandElement(tagName: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p", args: string[]): HTMLElement {
-		let props: string = ""
-		let inner: string = ""
-
-		// TODO: ParseShorthandElement(..., [".whatever", ".whatever"] ) causes invalid element creation
-
-		if (args.length === 1) {
-			inner = args[0]
-		} else {
-			for (let i = 0; i < args.length; i++) {
-				const arg = args[i]
-				if ((arg.includes("#") || arg.includes(".")) && !arg.includes(" ")) {
-					props = arg
-				} else {
-					inner = arg
-				}
-			}
-		}
-
-		// TODO: Attribute support
-
-		let id = (props.match(/#[a-zA-Z-]*/) || [""])[0].substr(1)
-		let classList = Array.from(props.match(/\.[a-zA-Z]*/g) || [""])
-		const $element = document.createElement(tagName)
-		$element.id = id
-		$element.innerHTML = inner
-		$element.className = classList.map((c) => c.trim().substr(1)).join(" ")
-		return $element
-	}
-
-	/** @deprecated Quickly add a paragraph to the component. */
-	public p(a: string, b?: string) {
-		this.connect(ComponentCore.ParseShorthandElement("p", Array.from(arguments)))
-	}
-
-	/** @deprecated Quickly add a heading to the component. */
-	public h(a: string, b?: string) {
-		let n = 1
-		let e = this.$root.lastElementChild
-		while (e && e.tagName[0] === "H" && n < 6) {
-			n++
-			e = e.lastElementChild
-		}
-
-		let hCount = "h" + n.toString()
-		if (hCount === "h1" || hCount === "h2" || hCount === "h3" || hCount === "h4" || hCount === "h5" || hCount === "h6") {
-			this.connect(ComponentCore.ParseShorthandElement(hCount, Array.from(arguments)))
-		} else {
-			throw new Error("Unexpected H count, this is a Greenframe implementation error.")
-		}
 	}
 
 	/**

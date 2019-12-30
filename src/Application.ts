@@ -86,9 +86,6 @@ export default class Application {
 
 	private registeredColorSchemas: {[key in ColorSchemaName]?: ColorSchema} = {}
 
-	/** Container for icons. */
-	public icons: {[iconName: string]: () => SVGElement} = {}
-
 	/** Returns the CSS variable for the current ColorSchema if we currently have a variable declared, if we don't then this function returns a default. */
 	public getSchemaProperty(prop: string): string {
 		const cs = this.registeredColorSchemas[this.currentColorScheme]
