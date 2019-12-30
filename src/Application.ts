@@ -79,7 +79,7 @@ export default class Application {
 	private constructTime: number
 
 	/** The current color scheme of the application. */
-	private currentColorScheme: ColorSchemaName = Application.GetDefaultColorScheme()
+	private currentColorScheme: ColorSchemaName = Application.GetColorScheme()
 
 	/** Registered color schemes as stylesheet elements. */
 	private registeredColorSchemaStylesheets: {[key in ColorSchemaName]?: HTMLStyleElement} = {}
@@ -98,7 +98,7 @@ export default class Application {
 	}
 
 	/** Returns the default color scheme according to the User Agent. */
-	private static GetDefaultColorScheme(): ColorSchemaName {
+	public static GetColorScheme(): ColorSchemaName {
 		const useScheme = localStorage.getItem("greenframe-use-scheme")
 		if (useScheme === "light" || useScheme === "dark" || useScheme === "highContrast") {
 			console.log("Device colorscheme overriden by localStorage['greenframe-use-scheme'] =", useScheme)
@@ -119,7 +119,7 @@ export default class Application {
 			$style.innerHTML += "--schema-" + toKebabCase(item) + ": " + schema[item] + ";" + "\n"
 		}
 		$style.innerHTML += "}"
-		console.log("Created schema", $style)
+		// console.log("Created schema", $style)
 		this.registeredColorSchemaStylesheets[name] = $style
 	}
 
