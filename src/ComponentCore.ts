@@ -3,6 +3,7 @@
 import Activity from "./Activity"
 import Layout from "./Layout"
 import {ModalComponent, Component} from "./index"
+import {H, P, DIV} from "./E"
 
 /** @format */
 
@@ -18,6 +19,18 @@ export default abstract class ComponentCore extends HTMLElement {
 	private static commonCSSBlobs: string[] = []
 	private static commonCSSSource: string[] = []
 	private static CachedLayouts: {[tag: string]: DocumentFragment} = {}
+
+	public h(str: string) {
+		const e = H(str)
+		this.connect(e)
+		return e
+	}
+
+	public p(str: string) {
+		const e = P(str)
+		this.connect(e)
+		return e
+	}
 
 	/**
 	 * The layout of the component.
