@@ -105,7 +105,6 @@ export const Hide = (element: Element): void => {
 
 export const Show = (element: Element): void => element.removeAttribute("hidden")
 
-
 /** Fires a **callback every time an animation finishes** on the element, unlike the alternative `WaitForAnimationFinish` which resolves a promise the first time an animation finishes on the element. If you don't want to target the element exactly, use the native `addEventListener("animationend", <callback>)` call. */
 export const AnimationFinish = (element: HTMLElement, callback: () => void) => {
 	const eventListener = (ev: AnimationEvent) => {
@@ -144,6 +143,34 @@ export const WaitForAnimationFinish = (element: HTMLElement, timeout?: number, e
 				resolve()
 			}, timeout)
 		}
+	})
+}
+
+export const DestroyWithAnimation = (element: HTMLElement) => {
+	return new Promise((resolve) => {
+		element.setAttribute("destroyed", "")
+		WaitForAnimationFinish(element, 600).then(() => {
+			element.remove()
+			resolve()
+		})
+	})
+}
+
+/** Waits until `getBoundingClientRect()` returns a valid width or height. Useful for ensuring elements have loaded correctly. */
+export const WaitForDOMRect = (element: HTMLElement): Promise<DOMRect> => {
+	return new Promise((resolve) => {
+		const frame = () => {
+			const box = element.getBoundingClientRect()
+			if (box.width || box.height) {
+				console.log("Determined box", box, element)
+				resolve(box)
+			} else {
+				// check again on the next frame
+				window.requestAnimationFrame(frame)
+				console.log(element.tagName + " - cannot determine a DOMRect yet. Will check again...")
+			}
+		}
+		frame()
 	})
 }
 

@@ -1,7 +1,7 @@
 /** @format */
 
 /** Wait a number of seconds before resolving. */
-export function sleep(ms: number) {
+export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => {
 		if (ms <= 0) {
 			resolve()
@@ -12,7 +12,7 @@ export function sleep(ms: number) {
 }
 
 /** Wait a specified number of frames before resolving. */
-export function sleepFrames(nFrames: number) {
+export function sleepFrames(nFrames: number): Promise<void> {
 	return new Promise((resolve) => {
 		let n = 0
 		const f = () => {

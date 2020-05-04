@@ -1,6 +1,5 @@
 /** @format */
-import Component from "./Component"
-import { ReactiveComponent } from "."
+import ReactiveComponent from "./ReactiveComponent"
 
 export default abstract class ModalComponent extends ReactiveComponent {
 	type: "hash" | "attached" | "unattached" = "unattached"

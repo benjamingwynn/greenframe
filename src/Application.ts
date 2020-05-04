@@ -1,10 +1,14 @@
 /** @format */
 
-import ComponentCore from "./ComponentCore"
+import {ComponentBase} from "./ComponentBase"
 import Activity from "./Activity"
 import {toKebabCase} from "./util"
-import {ModalComponent, ErrorActivity, util, DOMUtil, Component} from "./index"
+import ModalComponent from "./ModalComponent"
+import {ErrorActivity} from "./Activity"
+import * as util from "./util"
+import Component from "./Component"
 import AssetLoader2 from "./AssetLoader2"
+import {DOMUtil} from "."
 
 /** The colour scheme for the component. This is a simple way to set CSS variables for different schemes. Greenframe will automatically decide what's best for the user. */
 export type ColorSchemaName = "dark" | "light" | "highContrast"
@@ -15,7 +19,7 @@ export type ColorSchema = {[customProperty: string]: string}
 class ColorSchemaDoesNotExistError extends Error {}
 
 /** The root of the application. This will attach to the body. */
-class ApplicationRoot extends ComponentCore {
+class ApplicationRoot extends ComponentBase {
 	constructor() {
 		// Do not isolate the root, this will allow us to use external scripts that require direct access to the document root, such as SSO.
 		super(false)
@@ -109,7 +113,7 @@ export default class Application {
 		}
 	}
 
-	public registerColorScheme(name: ColorSchemaName, schema: ColorSchema) {
+	public registerColorScheme(name: ColorSchemaName | string, schema: ColorSchema) {
 		this.registeredColorSchemas[name] = schema
 		const $style = document.createElement("style")
 		$style.setAttribute("color-schema", name)
@@ -141,6 +145,14 @@ export default class Application {
 		// Add the stylesheet
 		this.$root.$root.appendChild($schema)
 
+		// Try to get the background color from the schema and apply it to "body" to fix visual bugs
+		const schema = this.registeredColorSchemas[newSchema]
+		if (schema && schema.applicationBackground) {
+			document.body.style.backgroundColor = schema.applicationBackground
+		} else {
+			document.body.style.backgroundColor = newSchema === "dark" ? "black" : "white"
+		}
+
 		if (remember) {
 			localStorage.setItem("greenframe-use-scheme", newSchema)
 		}
@@ -157,7 +169,9 @@ export default class Application {
 		this._state = newState
 		this.unregisterFixedComponents()
 
-		if (this.currentActivityStartedVia === "route") this.routeChanged(false)
+		// if (this.currentActivityStartedVia === "route") this.routeChanged(false)
+		// TODO: is this a suitable replacement?
+		this.refreshCurrentActivity()
 
 		if (this.appSetup) this.appSetup(newState)
 	}
@@ -211,46 +225,6 @@ export default class Application {
 
 	/** The currently constructed activity route, i.e. what class is being used. */
 	private currentlyConstructedActivity?: Function
-
-	/** Handles the change of the current route */
-	private routeChanged(initial: boolean, route: string = location.pathname) {
-		if (!initial) this.navigated = true
-
-		if (this.currentRoute === route) {
-			if (this.routes[route]() === this.currentlyConstructedActivity) {
-				if (this.hash === this.lastHash) {
-					console.warn("Refreshing the current activity as the router function specifies it should remain the same.")
-					this.refreshCurrentActivity()
-				} else {
-					console.warn("Just firing hashChange.")
-					this.hashChange()
-				}
-
-				return
-			} else {
-				console.warn("Routing to a new function as the router specifies.")
-			}
-		}
-
-		this.currentRoute = route
-
-		console.debug("Route changed to:", route)
-
-		// Register the route if it's not registered
-		let activityTagName: string
-		const r = this.routes[route]
-		if (typeof r === "function") {
-			this.currentlyConstructedActivity = r()
-			activityTagName = this.registerComponent(this.currentlyConstructedActivity, undefined, true)
-		} else if (this.notFoundActivity) {
-			activityTagName = this.registerComponent(this.notFoundActivity, undefined, true)
-		} else {
-			throw new Error("No activity exists at this route, and there is no handler for 404's.")
-		}
-
-		this.startActivityViaTag(activityTagName, !!initial, this.getPageArguments())
-		this.currentActivityStartedVia = "route"
-	}
 
 	/** Starts an activity without routing to it. This can be used when the user needs to be taken to an Activity that shouldn't be accessible via the address bar or UA history. The activity must be passed as it's class. */
 	public startActivityWithoutRouting(activityClass: Function, args?: {[key: string]: string}) {
@@ -323,16 +297,18 @@ export default class Application {
 	private fixedComponentsHidden = false
 
 	/** Hides fixed components. */
-	public hideFixedComponents(): void {
-		if (this.fixedComponentsHidden) return
+	private hideFixedComponents(): void {
+		if (this.fixedComponentsHidden) {
+			console.warn("Not hiding components, they are already hidden")
+			return
+		}
+		// console.warn("Hiding fixed components.", this.fixedComponents)
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
-		this.$root.style.setProperty("--activity-top", "0px")
-		this.$root.style.setProperty("--activity-left", "0px")
-		this.$root.style.setProperty("--activity-right", "0px")
-		this.$root.style.setProperty("--activity-bottom", "0px")
-
+		console.warn("hideFixedComponents: current fixed components array:", this.fixedComponents)
+		// set the style of all of the components to hidden
 		this.fixedComponents.forEach(($comp) => {
+			console.warn("Hiding component", $comp)
 			$comp.style.opacity = "0"
 
 			if ($comp.style.bottom === "0px") {
@@ -347,38 +323,81 @@ export default class Application {
 		})
 
 		this.fixedComponentsHidden = true
+		console.log("Fixed components hidden. Calculating activity size.")
 		this.calculateActivitySize()
 	}
 
-	/** Calculates an activities size based on the sizes of fixed components. */
-	private calculateActivitySize(): void {
-		let left = 0
-		let right = 0
-		let top = 0
-		let bottom = 0
+	private activitySizeCalculationPromises: Promise<DOMRect>[] = []
 
-		if (!this.fixedComponentsHidden) {
-			for (let i = 0; i < this.fixedComponents.length; i++) {
-				const element = this.fixedComponents[i]
-				const anchor = element.dataset.anchor
-				const rect = element.getBoundingClientRect()
+	/** Calculates an activities size based on the sizes of fixed components. Ensure fixed components have loaded correctly before calling this function. */
+	private calculateActivitySize(): Promise<void> {
+		return new Promise((resolve) => {
+			let left = 0
+			let right = 0
+			let top = 0
+			let bottom = 0
 
-				if (anchor === "left") left += rect.width
-				else if (anchor === "right") right += rect.width
-				else if (anchor === "bottom") bottom += rect.height
-				else if (anchor === "top") top += rect.height
-				else throw new Error("Unknown anchor for fixed component.")
+			if (!this.fixedComponentsHidden) {
+				if (!this.activitySizeCalculationPromises.length) {
+					// if this is empty, resolve immediately
+					if (!this.fixedComponents.length) {
+						console.log("calculateActivitySize: There are no fixed components right now, automatically resolving with 0px for all directions.")
+						this.$root.style.setProperty("--activity-bottom", "0px")
+						this.$root.style.setProperty("--activity-top", "0px")
+						this.$root.style.setProperty("--activity-left", "0px")
+						this.$root.style.setProperty("--activity-right", "0px")
+						resolve()
+						return
+					}
+
+					console.log("calculateActivitySize: I have fixed components but don't have calculation promises, creating them...")
+
+					for (let i = 0; i < this.fixedComponents.length; i++) {
+						const element = this.fixedComponents[i]
+						const anchor = element.dataset.anchor
+						const p = DOMUtil.WaitForDOMRect(element)
+
+						p.then((rect) => {
+							console.log("calculateActivitySize: Finished waiting for DOMRect of:", element)
+							if (anchor === "left") left += rect.width
+							else if (anchor === "right") right += rect.width
+							else if (anchor === "bottom") bottom += rect.height
+							else if (anchor === "top") top += rect.height
+							else throw new Error("Unknown anchor for fixed component.")
+						})
+
+						this.activitySizeCalculationPromises.push(p)
+					}
+				} else {
+					console.log("calculateActivitySize: activitySizeCalculationPromises already has items, so there must be a calculation already in progress. I won't do anything.")
+					resolve()
+					return
+				}
+			} else {
+				console.log("calculateActivitySize: fixedComponentsHidden === true - automatically resolving with 0px for all directions.")
+				this.$root.style.setProperty("--activity-bottom", "0px")
+				this.$root.style.setProperty("--activity-top", "0px")
+				this.$root.style.setProperty("--activity-left", "0px")
+				this.$root.style.setProperty("--activity-right", "0px")
+				resolve()
+				return
 			}
-		}
 
-		this.$root.style.setProperty("--activity-bottom", bottom + "px")
-		this.$root.style.setProperty("--activity-top", top + "px")
-		this.$root.style.setProperty("--activity-left", left + "px")
-		this.$root.style.setProperty("--activity-right", right + "px")
+			Promise.all(this.activitySizeCalculationPromises).then((boxes) => {
+				console.log("calculateActivitySize: I finished waiting for the sizes of the fixed components", boxes, {top, left, bottom, right})
+				this.$root.style.setProperty("--activity-bottom", bottom + "px")
+				this.$root.style.setProperty("--activity-top", top + "px")
+				this.$root.style.setProperty("--activity-left", left + "px")
+				this.$root.style.setProperty("--activity-right", right + "px")
+				this.activitySizeCalculationPromises.splice(0, this.activitySizeCalculationPromises.length) // wipe array
+				resolve()
+			})
+		})
 	}
 
 	/** Registers an element to keep either to the top/bottom/left/right of all activities. */
 	public registerFixedComponent(anchor: "top" | "left" | "bottom" | "right", element: Component): void {
+		console.log("Registering fixed component", element)
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
 		element.classList.add("fixed-component")
@@ -426,6 +445,7 @@ export default class Application {
 
 	/** Shows all registered fixed components. */
 	public showFixedComponents(): void {
+		console.log("Attempting to show fixed components")
 		if (!this.fixedComponentsHidden) return
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
 
@@ -435,6 +455,7 @@ export default class Application {
 		})
 
 		this.fixedComponentsHidden = false
+		console.log("Shown fixed components, recalculating activity size.")
 		this.calculateActivitySize()
 	}
 
@@ -446,7 +467,7 @@ export default class Application {
 			if (failSilently) return elementName
 			throw new Error(elementName + " is already defined in the custom elements registry.")
 		} else {
-			customElements.define(elementName, component)
+			customElements.define(elementName, <CustomElementConstructor>component)
 			// console.log("Registered new component:", component.name, "→", elementName)
 		}
 		return elementName
@@ -502,54 +523,23 @@ export default class Application {
 		return location.hash.split("?")[0].substr(1)
 	}
 
-	private destroyAllModals() {
-		this.showFixedComponents()
-
-		const all = this.getLoadedActivities()
-		for (let i = 0; i < all.length; i++) {
-			const existingModals = Array.from(all[i].$modalContainer.children)
-			// console.warn("Deleting existing modals", this.getCurrentActivity(), existingModals)
-			existingModals.forEach(($e) => {
-				$e.setAttribute("destroyed", "")
-
-				let aniStarted: boolean = false
-
-				$e.addEventListener("animationstart", (ev) => {
-					ev.stopImmediatePropagation()
-					// console.log("Modal close animation started")
-					aniStarted = true
-					$e.addEventListener("animationend", () => {
-						// console.log("Modal close animation finished")
-						ev.stopImmediatePropagation()
-						$e.remove()
-					})
-				})
-
-				util.sleepFrames(2).then(() => {
-					if (!aniStarted) {
-						console.warn("No animation declared for destroying this component. Declare :host([destroyed]) { /* ... */ } in your components CSS to add an animation when this component is destroyed. [" + $e.tagName + "]")
-						$e.remove()
-					}
-				})
-			})
-		}
-	}
-
 	/** Handles the hash being changed. */
 	public hashChange(force?: true) {
 		if (this.hash === this.lastHash && !force) return
 		this.lastHash = this.hash
 
 		if (this.getCurrentActivity().$modalContainer.querySelector(`[triggered-by-hash="${this.hash}"]`)) {
-			console.warn("A modal that is triggered by this hash already exists, doing nothing.")
+			console.warn("A modal that is triggered by this hash already exists, doing nothing except hiding fixed components.")
+			this.hideFixedComponents()
 			return
 		}
 
-		this.destroyAllModals()
+		// Remove modals on the page
+		this.getCurrentActivity().destroyAllModals()
 
 		if (this.hash) {
 			const functionObject = this.getCurrentActivity().registeredModalHooks[this.hash]
-			console.debug("Hash changed:", this.hash)
+			console.warn("Firing hash change event for new hash:", this.hash)
 
 			if (functionObject) {
 				if (typeof functionObject !== "function") throw new Error("Registered hash object is not a function.")
@@ -559,6 +549,8 @@ export default class Application {
 				const args = this.getHashArguments()
 				const $modal = functionObject(args)
 				if ($modal) {
+					// this.hideFixedComponents()
+
 					this.hideFixedComponents()
 					$modal.setAttribute("triggered-by-hash", this.hash)
 					$modal.type = "hash"
@@ -571,6 +563,7 @@ export default class Application {
 				// functionObject(Activity.ApplicationModalContainer, args)
 			}
 		} else {
+			this.showFixedComponents()
 			console.debug("Hash is empty.")
 		}
 	}
@@ -581,12 +574,13 @@ export default class Application {
 		this.getCurrentActivity().$modalContainer.appendChild(modal)
 	}
 
-	private currentActivityStartedVia: "route" | "startActivityWithoutRouting" = "route"
+	private currentActivityStartedVia: "route" | "startActivityWithoutRouting" | "routeOverride" = "route"
 	private currentActivityTag?: string
 	private currentActivityArguments?: string
 
 	/** Starts an activity by the component tag passed. Unlike in previous versions of greenframe this can only be called internally by the application, if you want to start an activity on a route, call `<Application>.goto(route)` or `<Application>.startActivityWithoutRouting()` */
 	private startActivityViaTag(activityTag: string, noAnimation: boolean, args: {[key: string]: string}): Activity {
+		console.error("STARTING ACTIVITY!!", activityTag)
 		this.currentActivityArguments = JSON.stringify(args)
 
 		const setupActivity = (activity: Activity): Activity => {
@@ -679,7 +673,7 @@ export default class Application {
 	}
 
 	/** Switch the activity by the route name selected. */
-	public goto(route: string, data?: {[key: string]: string}) {
+	public goto(route: string, data?: {[key: string]: string}, forceReplaceState?: boolean) {
 		let routeNameStripped: string = route[0] === "/" ? route.substr(1) : route
 
 		if (!this.started) throw new Error("Application hasn't started yet. Call `Application.start()` first.")
@@ -692,7 +686,13 @@ export default class Application {
 				extra += `${n === 0 ? "?" : "&"}${key}=${data[key]}`
 			})
 		}
-		history.pushState({}, "", location.origin + "/" + routeNameStripped + extra)
+
+		if (forceReplaceState) {
+			history.replaceState("GREENFRAME - goto [replace]", "", location.origin + "/" + routeNameStripped + extra)
+		} else {
+			history.pushState("GREENFRAME - goto", "", location.origin + "/" + routeNameStripped + extra)
+		}
+
 		this.routeChanged(false)
 	}
 
@@ -712,7 +712,11 @@ export default class Application {
 			// only fire switchedTo if the page arguments ACTUALLY changed
 			if (str !== this.currentActivityArguments) {
 				this.currentActivityArguments = str
-				current.switchedTo(this.getPageArguments())
+				if (this.currentActivityStartedVia === "route") {
+					current.switchedTo(this.getPageArguments())
+				} else {
+					throw new Error("Implementation error: cannot refresh an activity that was not started via a route. Considering refactoring or updating this method.")
+				}
 				console.warn("Refresh: fired switchedTo again.")
 			}
 		} else {
@@ -723,8 +727,8 @@ export default class Application {
 	/** Preload all resources under AssetLoader2.ResourcePreloadContainerTag */
 	private preloadResources(): Promise<void> {
 		return new Promise((resolve) => {
-			const p = document.body.querySelector(AssetLoader2.ResourcePreloadContainerTag)
-			if (!p) throw new Error(`Could not find "${AssetLoader2.ResourcePreloadContainerTag}" in the document body.`)
+			const p = AssetLoader2.root
+
 			const check = () => {
 				const e = p.querySelector(`*[complete]`)
 				if (!e) {
@@ -738,10 +742,8 @@ export default class Application {
 				if (c instanceof HTMLImageElement) {
 					if (c.complete) {
 						c.setAttribute("ready", "")
-						// console.log("[LOADED/COMPLETE]", c.dataset.src)
 					}
 					c.addEventListener("load", () => {
-						// console.log("[LOADED/LOAD]", c.dataset.src)
 						c.setAttribute("ready", "")
 						check()
 					})
@@ -763,7 +765,96 @@ export default class Application {
 	/** When enabled if the user hits, for example, "/settings/login" then this option will start "/", "/settings" and "/settings/login". If it's disabled then just "/settings/login" will be loaded. */
 	private static SELF_POPULATE_ROUTING_HISTORY = true
 
-	private generateRouteHistoryFromCurrentRoute(): string[] {
+	private navigationCounter = 0
+	/** Handles the change of the current route */
+
+	private routeChanged(initial: boolean) {
+		const route = location.pathname
+		console.warn("Detected route changed to:", route)
+
+		if (!initial) this.navigated = true
+
+		this.navigationCounter++
+
+		const startActivity = (r: Function, b: "route" | "routeOverride") => {
+			console.debug("Starting activity on route:", route)
+
+			// Register the route if it's not registered
+			this.currentlyConstructedActivity = r
+			const activityTagName = this.registerComponent(r, undefined, true)
+
+			this.startActivityViaTag(activityTagName, initial, this.getPageArguments())
+			this.currentActivityStartedVia = b
+			this.hashChange(true) // force this as the route changed, so hash stuff is out of date.
+		}
+
+		// refreshing stuff
+		if (this.currentRoute === route && this.routes[route]() === this.currentlyConstructedActivity) {
+			if (this.hash === this.lastHash) {
+				console.warn("Refreshing the current activity as the router function specifies it should remain the same.")
+				this.refreshCurrentActivity()
+				return
+			} else {
+				console.warn("The activity didn't appear to change, just firing hashChange. hashChange() should only be firing once per navigation.")
+				this.hashChange()
+				return
+			}
+		}
+
+		// Check the route overrides
+		for (let i = 0; i < this.routeOverrides.length; i++) {
+			const routeSplit = route.split("/")
+			const routeOverride = this.routeOverrides[i]
+			if (routeOverride.check(routeSplit)) {
+				// get the activity
+				const activity = routeOverride.execute()
+				if (typeof activity === "string") {
+					// re-route and replace this with the override
+					//this.goto(activity, undefined, true)
+					return
+				} else if (typeof activity === "function") {
+					const activityTagName = this.registerComponent(activity, undefined, true)
+					this.currentActivityStartedVia = "routeOverride"
+					this.currentlyConstructedActivity = activity
+					this.startActivityViaTag(activityTagName, this.navigationCounter === 1, routeOverride.args ? routeOverride.args(routeSplit) : this.getPageArguments())
+					this.hashChange(true) // force this as the route changed, so hash stuff is out of date.
+
+					// bail out of the entire function as we've routed somewhere
+					return
+				}
+			}
+		}
+
+		this.currentRoute = route
+
+		if (this.routes[route]) {
+			if (initial && Application.SELF_POPULATE_ROUTING_HISTORY) {
+				const routeSplit = route.split("/")
+				// for (let i = routeSplit.length - 1; i >= 0; i--) {
+				for (let i = 0; i < routeSplit.length; i++) {
+					const newRoute = routeSplit[i]
+					console.error("Application.SELF_POPULATE_ROUTING_HISTORY", `"${newRoute}"`)
+					startActivity(this.routes[route](), "route")
+				}
+			} else {
+				startActivity(this.routes[route](), "route")
+			}
+		} else if (this.notFoundActivity) {
+			startActivity(this.notFoundActivity, "route")
+		} else {
+			throw new Error("No activity exists at this route, and there is no handler for 404's.")
+		}
+	}
+
+	/** Application route overrides. These will be check if the user navigates somewhere using the `check` item, if this returns `true`, the `execute` function will be fired to get the Activity to use, along the `args` function to get the arguments to be used when starting that function. */
+	private routeOverrides: {check: (path: string[]) => boolean; execute: () => Function | string; args?: (path: string[]) => {[key: string]: string}}[] = []
+
+	/** Adds a route override */
+	public addRouteOverride(check: (path: string[]) => boolean, execute: () => Function | string, args?: (path: string[]) => {[key: string]: string}) {
+		this.routeOverrides.push({check, execute, args})
+	}
+
+	public generateRouteHistoryFromCurrentRoute(): string[] {
 		return location.pathname === "/" ? ["/"] : location.pathname.split("/").map((val, index, array) => array.slice(0, index).join("/") + "/" + val)
 	}
 
@@ -802,28 +893,21 @@ export default class Application {
 			this.routeChanged(false)
 		})
 
-		// Fire the initial route change
-		if (Application.SELF_POPULATE_ROUTING_HISTORY) {
-			const routes = this.generateRouteHistoryFromCurrentRoute()
-			for (let i = 0; i < routes.length; i++) {
-				this.routeChanged(true, routes[i])
-			}
-		} else {
-			this.routeChanged(true)
-		}
-
 		const t = performance.now() - this.constructTime
-		if (this.appSetup) this.appSetup(this.state)
 
 		// Only fire the hashChange event after the current route has animated in; allows bounding boxes & sizes to be computed correctly and ensures no weird overlapping animations.
-		const firstStartHash = (ev) => {
+		const postApplicationStart = async (ev) => {
+			console.warn("Root animation ended. Doing hashChange and calculating the activity size...")
 			ev.stopPropagation()
-			// console.warn("*** $root animation end")
-			this.hashChange()
-			this.$root.removeEventListener("animationend", firstStartHash)
-			this.calculateActivitySize()
+			await this.calculateActivitySize()
+
+			// Fire the initial route change
+			this.routeChanged(true)
+
+			this.$root.removeEventListener("animationend", postApplicationStart)
+			if (this.appSetup) this.appSetup(this.state)
 		}
-		this.$root.addEventListener("animationend", firstStartHash)
+		this.$root.addEventListener("animationend", postApplicationStart)
 
 		console.info('Application "' + this.applicationName + '" in state "' + this.state + '" started in', t, "ms")
 		if (t > 1500) {

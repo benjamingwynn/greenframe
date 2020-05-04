@@ -5,8 +5,9 @@ import Component from "./Component"
 export type FrameCall = () => Promise<void> | void
 
 export default abstract class FrameComponent extends Component {
-	private readonly frameCalls: (FrameCall)[] = []
+	private readonly frameCalls: FrameCall[] = []
 	private killSwitch: boolean = false
+	private _frameRequestID?: number
 
 	public registerFrameCall(call: FrameCall) {
 		this.frameCalls.push(call)
@@ -27,28 +28,28 @@ export default abstract class FrameComponent extends Component {
 		throw new Error("Cannot destroy frame call as it doesn't exist.")
 	}
 
+	private frame: FrameRequestCallback = () => {
+		if (this.killSwitch) return
+
+		const promises: Promise<void>[] = []
+		for (let i = 0; i < this.frameCalls.length; i++) {
+			const maybePromise = this.frameCalls[i]()
+			if (maybePromise) promises.push(maybePromise)
+		}
+
+		if (promises.length) {
+			Promise.all(promises).then(() => {
+				this._frameRequestID = requestAnimationFrame(this.frame)
+			})
+		} else {
+			this._frameRequestID = requestAnimationFrame(this.frame)
+		}
+	}
+
 	async connectedCallback() {
 		await super.connectedCallback()
 
-		const frame = () => {
-			if (this.killSwitch) return
-
-			const promises: Promise<void>[] = []
-			for (let i = 0; i < this.frameCalls.length; i++) {
-				const maybePromise = this.frameCalls[i]()
-				if (maybePromise) promises.push(maybePromise)
-			}
-
-			if (promises.length) {
-				Promise.all(promises).then(() => {
-					requestAnimationFrame(() => frame())
-				})
-			} else {
-				requestAnimationFrame(() => frame())
-			}
-		}
-
-		requestAnimationFrame(() => frame())
+		this._frameRequestID = requestAnimationFrame(this.frame)
 	}
 
 	disconnectedCallback() {
@@ -56,6 +57,8 @@ export default abstract class FrameComponent extends Component {
 
 		// Enable kill switch to cut the `FrameRequestCallback` loop
 		this.killSwitch = true
+
+		if (this._frameRequestID) cancelAnimationFrame(this._frameRequestID)
 
 		// Clear frame calls
 		for (let i = 0; i < this.frameCalls.length; i++) {

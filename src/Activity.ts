@@ -1,35 +1,44 @@
 /** @format */
 
 import Component from "./Component"
-import {ModalComponent, DOMUtil} from "./index"
+import ModalComponent from "./ModalComponent"
+import {WaitForAnimationFinish, DestroyWithAnimation} from "./DOMUtil"
+import {sleepFrames} from "./util"
 
-abstract class Activity extends Component {
-	private loadedScripts: {[url: string]: HTMLScriptElement} = {}
+export default abstract class Activity extends Component {
+	/** Container of modals created on this activity. */
+	public $modalContainer = document.createElement("greenframe-activity-modal-container")
 
-	public loadScript(url, async: boolean = false, defer: boolean = false): Promise<void> {
-		return new Promise((resolve, reject) => {
-			if (this.loadedScripts[url]) {
-				console.log("Script", url, "is already loaded.")
-				resolve()
-			} else {
-				const $script = document.createElement("script")
-				$script.src = url
-				$script.async = async
-				$script.defer = defer
-				this.loadedScripts[url] = $script
-				$script.addEventListener("error", (ex) => {
-					reject(ex)
+	/** Removes all created modals on the Activity. Directly replaces `<Application>.destroyAllModals()`. */
+	public destroyAllModals() {
+		const existingModals = Array.from(this.$modalContainer.children)
+		console.warn("Deleting existing modals", this.tagName, existingModals)
+		existingModals.forEach(($e) => {
+			$e.setAttribute("destroyed", "")
+
+			// TODO: all of this animation/destroy stuff should be rewritten and part of `util`
+
+			let aniStarted: boolean = false
+
+			$e.addEventListener("animationstart", (ev) => {
+				ev.stopImmediatePropagation()
+				// console.log("Modal close animation started")
+				aniStarted = true
+				$e.addEventListener("animationend", () => {
+					// console.log("Modal close animation finished")
+					ev.stopImmediatePropagation()
+					$e.remove()
 				})
-				$script.addEventListener("load", () => {
-					console.warn("***** script", url, "loaded")
-					resolve()
-				})
-				this.connect(this.loadedScripts[url])
-			}
+			})
+
+			sleepFrames(2).then(() => {
+				if (!aniStarted) {
+					console.warn("No animation declared for destroying this component. Declare :host([destroyed]) { /* ... */ } in your components CSS to add an animation when this component is destroyed. [" + $e.tagName + "]")
+					$e.remove()
+				}
+			})
 		})
 	}
-
-	public $modalContainer = document.createElement("greenframe-activity-modal-container")
 
 	/** Hooks registered to different modal creating functions. Consider using `.registerModal` to make this easier. */
 	public registeredModalHooks: {[hash: string]: (properties: {[key: string]: string}) => ModalComponent | null} = {}
@@ -38,9 +47,6 @@ abstract class Activity extends Component {
 	public hookModal(name: string, callback: ((properties: {[key: string]: string}) => ModalComponent | null) | (() => ModalComponent | null)) {
 		// Register the new hash
 		this.registeredModalHooks[name] = callback
-
-		// Force detect a hash change
-		// this.app.hashChange(true)
 	}
 
 	/** Starts a modal via the modals hash name and with the properties provided. */
@@ -58,7 +64,7 @@ abstract class Activity extends Component {
 		})
 
 		// location.hash = "#" + name + extra
-		history.pushState(undefined, this.app.$title.innerText, location.href.split("#")[0] + "#" + name + extra)
+		history.pushState("GREENFRAME - started modal", this.app.$title.innerText, location.href.split("#")[0] + "#" + name + extra)
 
 		this.app.hashChange()
 	}
@@ -147,15 +153,16 @@ abstract class Activity extends Component {
 		super.connectedCallback()
 	}
 
-	public destroy() {
-		this.setAttribute("destroyed", "")
-		DOMUtil.WaitForAnimationFinish(this, 600).then(() => {
-			this.remove()
-		})
+	public async destroy() {
+		await DestroyWithAnimation(this)
 	}
 
 	/** Fires if the application requests to switch to the same activity it's already switched to, also can be fired manually. */
 	public refresh?()
 }
 
-export default Activity
+export abstract class ErrorActivity extends Activity {
+	constructor(protected error: Error) {
+		super()
+	}
+}

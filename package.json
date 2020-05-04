@@ -2,11 +2,11 @@
 	"name": "greenframe",
 	"version": "18.0.0",
 	"description": "a tiny framework for building evergreen web apps",
-	"main": "index.js",
+	"main": "dist/index.js",
 	"dependencies": {},
 	"devDependencies": {
-		"@types/node": "^12.7.1",
-		"typescript": "^3.0.0"
+		"@types/node": "^12.12.30",
+		"typescript": "^3.8.3"
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",

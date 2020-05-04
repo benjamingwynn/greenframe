@@ -1,21 +1,20 @@
 /** @format */
 
-import Activity from "./Activity"
 import Layout from "./Layout"
-import {ModalComponent, Component} from "./index"
 import {H, P, DIV} from "./E"
+import AssetLoader2 from "./AssetLoader2"
 
 /** @format */
 
 export type ComponentLoadBehavior = "hideBeforeReady" | "useLoadAttribute" | false
 
-export class ComponentConnectionTimeoutError extends Error {}
-
 /**
- *  ComponentCore is a component that does not have an `app` property. It can run without an App. You should use `Component` though.
+ *  ComponentBase is a component that does not have an `app` property. It can run without an App. You should use `Component` though.
+ *
+ * @format
  */
 
-export default abstract class ComponentCore extends HTMLElement {
+export abstract class ComponentBase extends HTMLElement {
 	private static commonCSSBlobs: string[] = []
 	private static commonCSSSource: string[] = []
 	private static CachedLayouts: {[tag: string]: DocumentFragment} = {}
@@ -50,8 +49,8 @@ export default abstract class ComponentCore extends HTMLElement {
 	 * **This is not an excuse for poor practice** - e.g. this should not be used to add a global `.row` as this will impact performance and confusion. Instead, consider defining a `row` component.
 	 **/
 	public static addCommonCSS(css: string) {
-		ComponentCore.commonCSSBlobs.push(URL.createObjectURL(new Blob([css], {type: "text/css"})))
-		ComponentCore.commonCSSSource.push(css)
+		ComponentBase.commonCSSBlobs.push(URL.createObjectURL(new Blob([css], {type: "text/css"})))
+		ComponentBase.commonCSSSource.push(css)
 	}
 
 	/**
@@ -62,7 +61,7 @@ export default abstract class ComponentCore extends HTMLElement {
 	protected loadBehavior: ComponentLoadBehavior = "hideBeforeReady"
 
 	/** Represents the root of the component where other Elements should be appended to and modified. Internally, this is either the component itself or a shadow root, depending on the components isolation setting. */
-	public $root: ComponentCore | ShadowRoot | HTMLElement | DocumentFragment
+	public $root: ComponentBase | ShadowRoot | HTMLElement | DocumentFragment
 
 	/** Construct with initialHTML and initialCSS. This is the HTML and CSS the element will be constructed with, along with the common stuff. */
 	constructor(private isolate: boolean = true) {
@@ -89,10 +88,10 @@ export default abstract class ComponentCore extends HTMLElement {
 	private static HTMLInsertCount: number = 0
 	/** Inserts raw HTML markup into the component. For performance reasons this should be used sparingly, like when inserting SVG's or existing HTML. */
 	public html(html: string) {
-		if (ComponentCore.HTMLInsertCount++ > 100) {
+		if (ComponentBase.HTMLInsertCount++ > 100) {
 			console.warn("🌳🏗⚠️ Heads up! You're creating a lot of elements with <Component>.html() - this will affect performance, consider using the DOM instead to add elements.")
 		}
-		const doc = ComponentCore.DOMParser.parseFromString(`<component-inner>${html}</component-inner>`, "text/html")
+		const doc = ComponentBase.DOMParser.parseFromString(`<component-inner>${html}</component-inner>`, "text/html")
 		const inner = doc.querySelectorAll("component-inner > *")
 		if (!inner.length) throw new Error("Could not select inner component from parsed HTML string.")
 		for (let i = 0; i < inner.length; i++) this.$root.appendChild(inner[i])
@@ -132,7 +131,7 @@ export default abstract class ComponentCore extends HTMLElement {
 	/**
 	 * Adds an element to the component.
 	 **/
-	public connect($element: HTMLElement | HTMLElement[], parent: string | HTMLElement | ShadowRoot | DocumentFragment = this.$root): void {
+	public connect<T extends HTMLElement | HTMLElement[]>($element: T, parent: string | HTMLElement | ShadowRoot | DocumentFragment = this.$root): T {
 		let p: HTMLElement | ShadowRoot | DocumentFragment
 
 		if (typeof parent === "string") {
@@ -143,8 +142,10 @@ export default abstract class ComponentCore extends HTMLElement {
 
 		if (Array.isArray($element)) {
 			$element.forEach(($e) => p.appendChild($e))
+			return $element
 		} else {
-			p.appendChild($element)
+			p.appendChild(<HTMLElement>$element)
+			return $element
 		}
 	}
 
@@ -162,9 +163,9 @@ export default abstract class ComponentCore extends HTMLElement {
 	}
 
 	/** Short-hand for selecting `Component` items from the current parent `Component`. Throws fatal error if the component doesn't exist or if the component is a standard HTMLElement. */
-	public $c(query: string, $root: HTMLElement | ShadowRoot | DocumentFragment = this.$root): ComponentCore {
+	public $c(query: string, $root: HTMLElement | ShadowRoot | DocumentFragment = this.$root): ComponentBase {
 		const $r = this.$(query, $root)
-		if ($r instanceof ComponentCore) return $r
+		if ($r instanceof ComponentBase) return $r
 		throw new Error(`Selector on CustomElement failed for selectorQuery as the query is not a valid Component: ${query}`)
 	}
 
@@ -220,7 +221,7 @@ export default abstract class ComponentCore extends HTMLElement {
 		const childComponents = this.$$("[component]")
 		for (let i = 0; i < childComponents.length; i++) {
 			const element = childComponents[i]
-			if (element instanceof ComponentCore) {
+			if (element instanceof ComponentBase) {
 				const r = element.$deep(query)
 				if (r) return r
 			} else {
@@ -232,72 +233,15 @@ export default abstract class ComponentCore extends HTMLElement {
 	}
 
 	/** Connect this component to another component, or a HTML element. */
-	public connectTo($to: HTMLElement | ComponentCore) {
-		if ($to instanceof ComponentCore) {
+	public connectTo($to: HTMLElement | ComponentBase) {
+		if ($to instanceof ComponentBase) {
 			$to.$root.appendChild(this)
 		} else {
 			$to.appendChild(this)
 		}
 	}
 
-	/**
-	 * Connect this component and wait for it to finish it's setup function before resolving a promise.
-	 *
-	 * Optionally, a timeout may be provided. If the component does not connect in the time provided by the timeout then a ComponentConnectionTimeoutError will be thrown.
-	 *
-	 * Additionally, the `waitForVisible` argument can be used to wait until the element is `visible`
-	 */
-	public connectToAndWait($to: HTMLElement | ComponentCore, timeout?: number, waitForVisible?: true): Promise<void> {
-		const bailTime = timeout ? Date.now() + timeout : Infinity
-		return new Promise((resolve, reject) => {
-			this.connectTo($to)
-			const f = () => {
-				if (bailTime !== Infinity && Date.now() > bailTime) {
-					$to.remove()
-					console.warn($to.tagName, "didn't connect in time and was destroyed.")
-					reject(new ComponentConnectionTimeoutError())
-				} else {
-					if (this.connectedCallbackFinished && (!waitForVisible || (waitForVisible && this instanceof Component && this.visible))) {
-						resolve()
-					} else {
-						requestAnimationFrame(f)
-					}
-				}
-			}
-			requestAnimationFrame(f)
-		})
-	}
-
-	/** Back-reference to the parent activity of the current component. */
-	private _parentActivity?: Activity
-
-	/** Gets the activity the component is attached to. */
-	public getActivity(): Activity | null {
-		if (this instanceof Activity) {
-			console.warn("Activity instance requested getActivity(), just use `this` on it.")
-			return this
-		} else if (this instanceof ModalComponent) {
-			return this.app.getCurrentActivity()
-		} else {
-			if (this._parentActivity) return this._parentActivity
-			let p: any = this
-			while (p.host || p.parentNode) {
-				p = p.host || p.parentNode
-				if (p instanceof Activity) {
-					return (this._parentActivity = p)
-				}
-			}
-			return null
-		}
-	}
-
-	public getActivityOrFail(): Activity {
-		const a = this.getActivity()
-		if (!a) throw new Error("Could not get activity of component.")
-		return a
-	}
-
-	protected connectedCallbackRan = false
+	protected connectedCallbackRan = 0
 	protected connectedCallbackFinished = false
 
 	/** Shortcut to get CSS variable value */
@@ -313,7 +257,13 @@ export default abstract class ComponentCore extends HTMLElement {
 	/** Returns the class name of the component as a string. */
 	protected getClassName(): string {
 		// @ts-ignore
-		if (this.__proto__ && this.__proto__.constructor && this.__proto__.constructor.name) return this.__proto__.constructor.name
+		if (this.__proto__ && this.__proto__.constructor && this.__proto__.constructor.name) {
+			// @ts-ignore
+			const n = this.__proto__.constructor.name
+			const ns = n.split("_")
+			if (ns[0] && ns[1] && ns[0] === ns[1]) return ns[0]
+			return n
+		}
 		return this.tagName.toLowerCase()
 	}
 
@@ -362,18 +312,19 @@ export default abstract class ComponentCore extends HTMLElement {
 	public async connectedCallback(): Promise<void> {
 		if (this.connectedCallbackRan) {
 			console.warn(this, "connected callback already ran.")
+			if (this.connectedCallbackRan++ > 6) throw new Error("Element connected callback trapped.")
 			return
 		}
 
 		// Only ever run this function once
-		this.connectedCallbackRan = true
+		this.connectedCallbackRan++
 
 		// Mark this with the `component` attribute so we can use querySelector to find components.
 		this.setAttribute("component", "")
 
 		// Re-map the $root to a document fragment to improve performance
 		let realRoot = this.$root
-		if (ComponentCore.RemapRootToDocumentFragmentDuringConnectedCallback) {
+		if (ComponentBase.RemapRootToDocumentFragmentDuringConnectedCallback) {
 			this.$root = document.createDocumentFragment()
 		}
 
@@ -391,20 +342,20 @@ export default abstract class ComponentCore extends HTMLElement {
 			// if (this.tagName.toLowerCase() === "component-title-bar") debugger
 
 			// Add the common CSS
-			for (let i = 0; i < ComponentCore.commonCSSBlobs.length; i++) {
+			for (let i = 0; i < ComponentBase.commonCSSBlobs.length; i++) {
 				const $link = document.createElement("link")
 				$link.setAttribute("common-css", "")
 				$link.rel = "stylesheet"
-				$link.href = ComponentCore.commonCSSBlobs[i]
+				$link.href = ComponentBase.commonCSSBlobs[i]
 				this.$root.appendChild($link)
 			}
 		} else {
 			// non isolated common CSS
-			for (let i = 0; i < ComponentCore.commonCSSSource.length; i++) {
+			for (let i = 0; i < ComponentBase.commonCSSSource.length; i++) {
 				const $link = document.createElement("link")
 				$link.setAttribute("common-css", "")
 				$link.rel = "stylesheet"
-				$link.href = this.componentCSStoIsolatedCSS(ComponentCore.commonCSSSource[i])
+				$link.href = this.componentCSStoIsolatedCSS(ComponentBase.commonCSSSource[i])
 				this.$root.appendChild($link)
 			}
 		}
@@ -412,13 +363,13 @@ export default abstract class ComponentCore extends HTMLElement {
 		if (this.layout) {
 			// create the layout
 			let frag: DocumentFragment
-			if (ComponentCore.CachedLayouts[this.tagName]) {
-				frag = ComponentCore.CachedLayouts[this.tagName]
+			if (ComponentBase.CachedLayouts[this.tagName]) {
+				frag = ComponentBase.CachedLayouts[this.tagName]
 				// console.debug("Loaded existing cached layout for", this.tagName)
 			} else {
 				const layout = new Layout()
 				this.layout(layout)
-				frag = ComponentCore.CachedLayouts[this.tagName] = layout.$root
+				frag = ComponentBase.CachedLayouts[this.tagName] = layout.$root
 				// console.debug("Generated new layout from fragment:", frag)
 			}
 			this.$root.appendChild(frag.cloneNode(true))
@@ -450,6 +401,16 @@ export default abstract class ComponentCore extends HTMLElement {
 			}
 		}
 
+		const fileName = "./src/components/" + this.getClassName() + ".css"
+		try {
+			const $css = AssetLoader2.CSS(fileName)
+			this.connect($css)
+			// console.log("Automatically loaded CSS for " + this.className + " from " + fileName + " via AssetLoader2.")
+		} catch {
+			console.log("Could not find", fileName)
+			// could not find it, mark it as null
+		}
+
 		// Run the setup function
 		await this.setup()
 
@@ -463,12 +424,19 @@ export default abstract class ComponentCore extends HTMLElement {
 		}
 
 		// append the document fragment we created an re-map the real root
-		if (ComponentCore.RemapRootToDocumentFragmentDuringConnectedCallback) {
+		if (ComponentBase.RemapRootToDocumentFragmentDuringConnectedCallback) {
 			realRoot.appendChild(this.$root)
 			this.$root = realRoot
 		}
 
 		this.connectedCallbackFinished = true
+	}
+
+	/** Appends a <div> with the selector given to the component using DOMUtil. */
+	public div(selector: string, elements?: Element[]) {
+		const div = DIV(selector, elements)
+		this.connect(div)
+		return div
 	}
 
 	private _uid?: string

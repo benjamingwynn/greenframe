@@ -1,22 +1,12 @@
 /** @format */
 
+import Activity from "./Activity"
+import Layout from "./Layout"
+import {H, P} from "./E"
 import Application from "./Application"
-import ComponentCore from "./ComponentCore"
+import {ComponentBase} from "./ComponentBase"
 
-window.addEventListener("unhandledrejection", (ex) => {
-	if (ex.reason && ex.reason.message === "Illegal constructor") {
-		console.warn("🌳🏗 It looks like you might be trying to construct a component using `new ()` without registering it first, make sure your `app.start()` includes all the definitions you're trying to use in your app.")
-		// console.log(ex)
-	}
-})
-
-window.addEventListener("error", (ex) => {
-	console.log(ex)
-	if (ex.message === "Uncaught TypeError: Illegal constructor") {
-		console.warn("🌳🏗 It looks like you might be trying to construct a component using `new ()` without registering it first, make sure your `app.start()` includes all the definitions you're trying to use in your app.")
-		// console.log(ex)
-	}
-})
+export class ComponentConnectionTimeoutError extends Error {}
 
 /**
  * A custom elements wrapper for easily creating reusable components.
@@ -32,7 +22,7 @@ window.addEventListener("error", (ex) => {
  *
  * @author Benjamin Gwynn
  **/
-export default abstract class Component extends ComponentCore {
+export default abstract class Component extends ComponentBase {
 	/** Back-reference to the app this component was created on. */
 	public get app(): Application {
 		const app = <any>window["app"]
@@ -56,6 +46,63 @@ export default abstract class Component extends ComponentCore {
 		} else {
 			return vis
 		}
+	}
+
+	/**
+	 * Connect this component and wait for it to finish it's setup function before resolving a promise.
+	 *
+	 * Optionally, a timeout may be provided. If the component does not connect in the time provided by the timeout then a ComponentConnectionTimeoutError will be thrown.
+	 *
+	 * Additionally, the `waitForVisible` argument can be used to wait until the element is `visible`
+	 */
+	public connectToAndWait($to: HTMLElement | ComponentBase, timeout?: number, waitForVisible?: true): Promise<void> {
+		const bailTime = timeout ? Date.now() + timeout : Infinity
+		return new Promise((resolve, reject) => {
+			this.connectTo($to)
+			const f = () => {
+				if (bailTime !== Infinity && Date.now() > bailTime) {
+					$to.remove()
+					console.warn($to.tagName, "didn't connect in time and was destroyed.")
+					reject(new ComponentConnectionTimeoutError())
+				} else {
+					if (this.connectedCallbackFinished && (!waitForVisible || (waitForVisible && this instanceof Component && this.visible))) {
+						resolve()
+					} else {
+						requestAnimationFrame(f)
+					}
+				}
+			}
+			requestAnimationFrame(f)
+		})
+	}
+
+	/** Back-reference to the parent activity of the current component. */
+	private _parentActivity?: Activity
+
+	/** Gets the activity the component is attached to. */
+	public getActivity(): Activity | null {
+		if (this instanceof Activity) {
+			console.warn("Activity instance requested getActivity(), just use `this` on it.")
+			return this
+			// } else if (this instanceof Component) {
+			// return this.app.getCurrentActivity()
+		} else {
+			if (this._parentActivity) return this._parentActivity
+			let p: any = this
+			while (p.host || p.parentNode) {
+				p = p.host || p.parentNode
+				if (p instanceof Activity) {
+					return (this._parentActivity = p)
+				}
+			}
+			return null
+		}
+	}
+
+	public getActivityOrFail(): Activity {
+		const a = this.getActivity()
+		if (!a) throw new Error("Could not get activity of component.")
+		return a
 	}
 }
 
