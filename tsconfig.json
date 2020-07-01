@@ -1,11 +1,13 @@
 {
 	"compilerOptions": {
-		"target": "esnext",
+		"target": "es2019",
 		"module": "CommonJS",
 		"declaration": true,
 		"sourceMap": true,
+		"sourceRoot": "./src",
 		"outDir": "./dist",
 		"rootDir": "./src",
+		"mapRoot": "./src",
 		"removeComments": true,
 		"strict": true,
 		"noImplicitAny": false,
